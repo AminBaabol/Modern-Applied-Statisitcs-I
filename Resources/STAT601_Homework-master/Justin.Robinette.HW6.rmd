@@ -1,0 +1,340 @@
+---
+title: "Homework #6"
+author: "Justin Robinette"
+date: "October 2, 2018"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+*No collaborators for any problem*
+
+```{r}
+library(TH.data)            #bodyfat/GlaucomaM dataset 
+library(gamair)             #hubble dataset
+library(GGally)             #data visualization
+library(ggplot2)            #data visualization
+library(gridExtra)          #data visualization
+library(corrr)              #correlations
+library(dplyr)              #manipulation
+library(knitr)              #kable
+library(mgcv)               #gam
+library(mboost)             #gradient boosting for additive models
+```
+
+**Problem #1, Part A:** Consider the body fat data introduced in Chapter 9 (bodyfat data from **TH.data** package).
+
+Explore the data graphically. What variables do you think need to be included for predicting bodyfat? (Hint: Are there correlated predictors - ggpairs()).
+
+**Results:** First we examined the relationship between predictors using a couple of plots. These are labels *Figure 1.1* and *Figure 1.2*. From this we can see that there are some highly correlated relationships among the predictors. *Figure 1.3* summarizes the correlation values between predictor variables. 
+
+To combat this multicollineary, I dropped any variable that had a correlation greater than 0.94 with any other variable. In doing so, we retained 'anthro3c' but dropped 'anthro3b' and 'anthro4' which were both highly correlated with 'anthro3c'. 
+
+After removing highly correlated predictors, the variables that should be included for predicting 'DEXfat' are listed in *Figure 1.4*. 
+
+Lastly, we look at the correlation between the remaining predictors and the response variable, 'DEXfat', to get a better idea of which predictors will have the biggest affect on the response. This is shown in the graph labelled *Figure 1.5* and summarized in *Figure 1.6*. 
+
+*Base R plots are included with each ggplot for comparison, per homework guidelines.*
+
+```{r}
+# load datset
+data("bodyfat", package = "TH.data")
+
+# ggpairs to examine correlations
+ggpairs(bodyfat[,c(1,3:6)], title = "Figure 1.1: Bodyfat Correlation Plot 1", 
+        upper = list(continuous = wrap("cor", size = 3)),
+        columnLabels = c("age","waist\ncirc","hip\ncirc","elbow\nbreadth", 
+                         "knee\nbreadth")) +
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 5))
+ggpairs(bodyfat[,c(7:10)], title = "Figure 1.2: Bodyfat Correlation Plot 2", 
+        upper = list(continuous = wrap("cor", size = 3)),
+        columnLabels = c("anthro\n3a","anthro\n3b",
+                         "anthro\n3c","anthro\n4")) +
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.text.y = element_text(size = 5))
+# comparable base R plot
+pairs(bodyfat[,c(1,3:6)], main = "Bodyfat Correlation Plot 1\nbase R")
+pairs(bodyfat[,7:10], main = "Bodyfat Correlation Plot 2\nbase R")
+
+# remove highly correlated predictor variables
+bf_predictors <- subset(bodyfat, select = -c(DEXfat))
+bf_predcor <- as.data.frame(abs(cor(bf_predictors)))
+diag(bf_predcor) <- 0
+bf_predcor[lower.tri(bf_predcor)] <- 0
+bf_predcor <- format(bf_predcor, digits = 3)
+
+kable(bf_predcor[,2:9], row.names = TRUE, 
+      caption = "Figure 1.3: Correlation Between Predictors")
+
+# drop any variable that has a correlation >0.9 with another
+lower_cor <- bf_predictors[,!apply(bf_predcor, 2, function(col) any(col > 0.94))]
+
+# recreate bodyfat dataset with appropriate predictors
+body_fat <- cbind(bodyfat[,2], lower_cor)
+colnames(body_fat)[1] <- "DEXfat"
+
+# get all remaining variables and list predictors in kable
+included_variables <- names(body_fat)
+kable(included_variables[-1], row.names = FALSE, col.names = "Variables",
+      caption = "Figure 1.4: Included Predictor Variables")
+
+# create table of correlations with DEXfat from remaining predictors
+bf_corr <- 
+  body_fat %>%
+  correlate() %>%
+  focus(DEXfat)
+bf_corr <- bf_corr[order(bf_corr$DEXfat),]
+# plot correlations in bar plot
+ggplot(data = bf_corr, aes(x=reorder(rowname, DEXfat), y=DEXfat)) +
+  geom_bar(stat = 'identity', color = "black", fill = rainbow(7)) +
+  geom_text(aes(label = round(DEXfat,3)), vjust = 2) +
+  labs(x = "Variable", y = "Correlation with DEXfat",
+       title = "Correlation with DEXfat by Independent Variable",
+       subtitle = "Figure 1.5") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1,
+                                   size = 14)) +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.1))
+barplot(bf_corr$DEXfat, main = "Correlation with DEXfat by\nIndependent Variable-baseR",
+        xlab = "", ylab = "Correlation with DEXfat",
+        names.arg = bf_corr$rowname, las = 2, cex.names = 0.8,
+        col = rainbow(7)) 
+kable(bf_corr, row.names = FALSE, 
+      col.names = c("Independent Variable", "Correlation with DEXfat"),
+      caption = "Figure 1.6: Variable Correlation with DEXfat")
+```
+
+**Problem #1, Part B:** Fit a generalized additive model assuming normal errors using function **gam**- the following code
+
+bodyfat_gam <- gam(DEXfat ~ s(age) + s(waistcirc) + s(hipcirc) + s(elbowbreadth) + s(kneebreadth) + s(anthro3a) + s(anthro3c), data = bodyfat)
+
+- Assess the **summary()** and **plot()** of the model. Are all covariates informative? Should all covariates be smoothed or should some be included as a linear effect?
+- Report GCV, AIC, adj-R2, and total model degrees of freedom.
+- Use **gam.check()** function to look at diagnostic plot. Does it appear that the normality
+assumption is violated?
+- Write a discussion on all of but not limited to the above points.
+
+**Results:** *Figure 1.7* shows the respective p-values for each variable as it is included in the model provided for the assignment. At an alpha of 0.05, the following variables are statistically significant predictors of 'DEXfat': **waistcirc, hipcirc, kneebreadth, anthro3a**. 
+
+*Figures 1.8* show that a couple of variables need to be smoothed more than other. These variables are shown in *Figure 1.8(v)* and *Figure 1.8(vii)* and represent **kneebreadth** and **anthro3c**. *Figure 1.8(iii)* also indicates that **hipcirc** may need to be smoothed for model accuracy. 
+
+*Figure 1.9* shows the GCV (**8.15**), AIC (**344.01**), R-Squared (**.9536**) and degrees of freedom (**20.72**) of the model supplied by this exercise. The R-squared value shows that 95.36% of the variation in 'DEXfat' can be explained by the model as provided. 
+
+Finally, we see the summary provided by *gam.check*, as the instructions requested. We see from the plot titled **Resids. vs. linear pred.** that the residuals are relatively normalized around 0. The included histogram shows the same type of distribution. We also see that the **Response vs Fitted Values** plot is linear in nature and appears thata this model is a pretty good predictor - as we saw by looking at R-Squared in *Figure 1.9*.
+
+```{r}
+# copy model from exercise
+bodyfat_gam <- gam(DEXfat ~ s(age) + s(waistcirc) + s(hipcirc) + s(elbowbreadth) + s(kneebreadth) + s(anthro3a) + s(anthro3c), data = bodyfat)
+
+# check summary of p-values for informative / predictive variables
+gam_sum <- summary(bodyfat_gam)
+kable(gam_sum$s.table[,4], col.names = "P-Value",
+      caption = "Figure 1.7: P-Value by Variable")
+
+# plots to see which variables need smoothed
+plot(bodyfat_gam, select = 1, main = "Figure 1.8(i)")
+plot(bodyfat_gam, select = 2, main = "Figure 1.8(ii)")
+plot(bodyfat_gam, select = 3, main = "Figure 1.8(iii)")
+plot(bodyfat_gam, select = 4, main = "Figure 1.8(iv)")
+plot(bodyfat_gam, select = 5, main = "Figure 1.8(v)")
+plot(bodyfat_gam, select = 6, main = "Figure 1.8(vi)")
+plot(bodyfat_gam, select = 7, main = "Figure 1.8(vii)")
+
+# GCV, AIC, adj-R2, degrees of freedom
+gam_stats <- cbind(gam_sum$sp.criterion, AIC(bodyfat_gam), gam_sum$r.sq, sum(gam_sum$edf))
+kable(gam_stats, row.names = FALSE, col.names = c("GCV","AIC","R2","DF"),
+      caption = "Figure 1.9: Model Statistics Summary")
+par(mfrow = c(2,3))
+gam.check(bodyfat_gam)
+
+```
+
+**Problem #1, Part C:** Now remove insignificant variables and remove smoothing for some variables. Report summary, plot, GCV, AIC, adj-R2. (Fit the following model as well as another one you come up with on your own, justifying the variables and smoothing you use).
+
+bodyfat_gam2 <- gam(DEXfat ~ waistcirc + s(hipcirc) + s(kneebreadth) + anthro3a + s(anthro3c), data = bodyfat)
+
+**Results:** *Figures 1.10* show the plots of the smoothed predictors from the supplied model, per the instructions. We see, similar to the figures above *Figure 1.8(iii), 1.8(v), and 1.8(vii)* above, the need for smoothing of 'hipcirc', 'kneebreadth' and 'anthro3c'. 
+
+Per the instructions, a summary of this model is included. The biggest thing I notice from the summary is the statistically significant prediction values for each predictor. All are significant at an alpha of 0.05. 
+
+*Figures 1.11* show the plots of the two smoothed variables from my alternative model, 'hipcirc' and 'kneebreadth'. For my alternative model, I've dropped 'anthro3c' as a predictor due to it's relatively less significant impact on 'DEXfat' when compared to the other predictors. 
+
+Per the homework instructions, a summary of my alternative model is included. This time, we see that all predictors are extremely significant in the prediction of 'DEXfat'.
+
+*Figure 1.12* summarizes the comparison statistics from the two models. As we can see from the GCV, AIC, and R-squared, the supplied model that includes 's(anthro3c)' is superior to my alternative model that dropped this predictor. This is to be expected since, although 'anthro3c' was less statistically significant than the other predictors in the supplied model, it was still significant at a level < 0.05.
+
+```{r}
+# supplied model
+bodyfat_gam2 <- gam(DEXfat ~ waistcirc + s(hipcirc) + s(kneebreadth) + anthro3a + s(anthro3c), data = bodyfat)
+# supplied model
+gam_sum2 <- summary(bodyfat_gam2)
+gam2_stats <- 
+  as.data.frame(cbind(gam_sum2$sp.criterion, AIC(bodyfat_gam2), gam_sum2$r.sq))
+rownames(gam2_stats) <- "Supplied Model"
+
+# plots to see which variables need smoothed
+par(mfrow = c(2,2))
+plot(bodyfat_gam2, select = 1, main = "Figure 1.10(i)")
+plot(bodyfat_gam2, select = 2, main = "Figure 1.10(ii)")
+plot(bodyfat_gam2, select = 3, main = "Figure 1.10(iii)")
+# reset plotting parameter
+par(mfrow = c(1,1))
+# model summary - per instructions
+gam_sum2
+
+# alternative model
+bodyfat_gam3 <- gam(DEXfat ~ waistcirc + s(hipcirc) + s(kneebreadth) + anthro3a, data = bodyfat)
+# alternative model
+gam_sum3 <- summary(bodyfat_gam3)
+gam3_stats <- 
+  as.data.frame(cbind(gam_sum3$sp.criterion, AIC(bodyfat_gam3), gam_sum3$r.sq))
+rownames(gam3_stats) <- "Alternative Model"
+
+# plots to see which variables need smoothed
+par(mfrow = c(1,2))
+plot(bodyfat_gam3, select = 1, main = "Figure 1.11(i)")
+plot(bodyfat_gam3, select = 2, main = "Figure 1.11(ii)")
+# reset plotting parameter
+par(mfrow = c(1,1))
+# model summary - per instructions
+gam_sum3
+
+# summary table of model stats
+kable(rbind(gam2_stats, gam3_stats), 
+      row.names = FALSE, col.names = c("GCV","AIC", "R2"),
+      caption = "Figure 1.12: 2nd Model Statistics Summary")
+```
+
+**Problem #1, Part D:** Again fit an additive model to the body fat data, but this time for a log-transformed response. Compare the three models, which one is more appropriate? (Hint: use AIC, Adj-R2, residual plots, etc. to compare models).
+
+**Results:** *Figure 1.13* gives us our model statistics using the supplied model from *part C*, as well as my alternative model from *part C*, with the log-transformed response model from this part of the exercise. Per the question, we are comparing the three models, but according to Burnham and Anderson (*Model Selection and Multi-Model Inference*, 2004) comparing the 3 is not possible since we've transformed the response in one of the models. 
+
+We see that the generalized cross-validation (GCV) score of the GAM fitted model, with log transformed response, is very low compared to the previous 2 models. The AIC is lower - actually negative - in the log transformed response model. This is the first time I've seen a negative AIC but evidently AIC should not be exclusively non-negative. 
+
+The r-squared of the supplied model from *part C* is superior indicating that this model explains the highest percentage of variation in 'DEXfat' of the 3 models. 
+
+```{r}
+bodyfat_gam4 <- gam(log(DEXfat)~ waistcirc + s(hipcirc) + s(kneebreadth)+ anthro3a + s(anthro3c), data = bodyfat)
+
+gam_sum4 <- summary(bodyfat_gam4)
+gam4_stats <- 
+  as.data.frame(cbind(gam_sum4$sp.criterion, AIC(bodyfat_gam4), gam_sum4$r.sq))
+rownames(gam4_stats) <- "Log Response Model"
+# summary table of model stats
+kable(rbind(gam2_stats, gam3_stats, gam4_stats),  
+      col.names = c("GCV","AIC", "R2"),
+      caption = "Figure 1.13: Log Model Statistics Summary")
+```
+
+**Problem #1, Part E:** Fit generalized additive model that underwent AIC-based variable selection (fitted using function **gamboost()**). What variable was removed by using AIC?
+
+bodyfat_boost <- gamboost(DEXfat ~ ., data = bodyfat)
+bodyfat_aic <- AIC(bodyfat_boost)
+bf_gam <- bodyfat_boost[mstop(bodyfat_aic)]
+
+**Results:** The variable dropped by the AIC-based variable selection, fitted using *gamboost* is **age**, as we can see from *Figure 1.14*. This is somewhat predictable given that it has the lowest correlation with **DEXfat** as I showed in *Figure 1.6*.
+
+```{r}
+# supplied code
+bodyfat_boost <- gamboost(DEXfat ~ ., data = bodyfat)
+bodyfat_aic <- AIC(bodyfat_boost)
+bf_gam <- bodyfat_boost[mstop(bodyfat_aic)]
+#summary(bf_gam)
+
+# show the variable dropped by the gamboost function
+vars_total <- as.data.frame(variable.names(bf_gam))
+row.names(vars_total) <- NULL
+colnames(vars_total)[1] <- "variable"
+vars_kept <- as.data.frame(extract(bf_gam, what = 'variable.names'))
+row.names(vars_kept) <- NULL
+colnames(vars_kept)[1] <- "variable"
+vars_dropped <- setdiff(vars_total, vars_kept)
+kable(vars_dropped, caption = "Figure 1.14: Variable Removed by GAMBoost")
+```
+
+**Problem #2:** Fit a logistic additive model to the glaucoma data. (Here use family = "binomial"). Which covariates should enter the model and what is their influence on the probability of suffering from glaucoma? (Hint: since there are many covariates use gamboost() to fit the GAM model.)
+
+**Results:** First I fit a logistic additive model, using gamboost due to the number of covariates. *Figure 2.1* shows the variables that have been included in the model based on gamboost. 
+
+*Figure 2.2* shows the selection probabilities of each variable. Their ranking indicates the influence each variable has on the probability of suffering from Glaucoma.
+
+```{r}
+data("GlaucomaM", package = "TH.data")
+# fit model with gamboost, per instructions
+glauc_boost <- gamboost(Class ~ ., data = GlaucomaM, family = Binomial())
+
+# get variables selected to enter the model
+glaucvars_kept <- as.data.frame(extract(glauc_boost, what = 'variable.names'))
+row.names(glaucvars_kept) <- NULL
+colnames(glaucvars_kept)[1] <- "variables"
+# summarize variables kept
+kable(glaucvars_kept, row.names = FALSE,
+      caption = "Figure 2.1: Variables Kept by GAMBoost")
+
+# summarize variable influence on the response
+glauc_sum <- summary(glauc_boost)
+glauc_vars <- as.data.frame(glauc_sum$selprob)
+row.names(glauc_vars) <- c("tmi","mhcg","vars","mhci","hvc","vass","as","vari","mv",
+  "abrs","mgcn","phcn","mdn","phci","hic","phcg","mdi","tms")
+glauc_vars <- cbind("Variables" = rownames(glauc_vars), glauc_vars)
+rownames(glauc_vars) <- NULL
+
+kable(glauc_vars, col.names = c("Variables", "Selection Probs"),
+      row.names = FALSE, caption = "Figure 2.2: Variable Importance")
+```
+
+**Problem #3:** Investigate the use of different types of scatterplot smoothers on the Hubble data from Chapter 6. (Hint: follow th example on men1500m data scattersmoothers page 199 of handbook).
+
+**Results:** *Figure 3.1* and *Figure 3.2* show the different types of scatterplot smoothers similar to what is using on the men1500m data in chapter 10. I've included analogous base R plots.
+
+```{r}
+data("hubble", package = "gamair")
+
+# create predictors
+lowess_hubble <- as.data.frame(lowess(hubble$x, hubble$y))
+hubble_cubic <- gam(y ~ s(x, bs = "cr"), data = hubble)
+predicted <- as.data.frame(cbind(hubble$x, y=predict(hubble_cubic)))
+
+# ggplots comparable to the text
+lm_hubble <-
+  ggplot(data = hubble, aes(x=x, y=y)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(x = "Distance in Mega parsecs", y = "Relative Velocity",
+       title = "Linear Model Scatterplot",
+       subtitle = "Figure 3.1") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+cub_hubble <-
+  ggplot(data = hubble, aes(x=x, y=y)) +
+  geom_point(data= predicted, aes(x = V1, y = y),col="red")+
+  geom_point(data = lowess_hubble, aes(x = x, y = y), col = "purple") +
+  geom_smooth(data = lowess_hubble, aes(x = x, y = y), se = FALSE) +
+  geom_smooth(data = predicted, aes(x = V1, y = y), se = FALSE) +
+  geom_smooth(data = hubble, method = "lm", se = FALSE) +
+  labs(x = "Distance in Mega parsecs", y = "Relative Velocity",
+       title = "Hubble Scatterplot with Predictors",
+       subtitle = "Figure 3.2") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+grid.arrange(lm_hubble, cub_hubble, ncol = 1)
+
+# analogous base r plots
+hubble1 <- lm(y ~ x, data = hubble)
+par(mfrow = c(1,2))
+plot(y ~ x, data = hubble, xlab = "Distance in Mega parsecs",
+     ylab = "Relative Velocity", main = "Linear Model\nScatterplot - base R")
+abline(hubble1)
+plot(y ~ x, data = hubble, xlab = "Distance in Mega parsecs",
+     ylab = "Relative Velocity", main = "Lowess Scatterplot\n- base R")
+lines(lowess_hubble, lty = 2)
+lines(hubble$x, predict(hubble_cubic), lty = 3)
+```

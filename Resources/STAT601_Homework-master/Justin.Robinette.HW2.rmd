@@ -1,0 +1,635 @@
+---
+title: "Homework #2"
+author: "Justin Robinette"
+date: "September 4, 2018"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,fig_height=10,fig_width=7,cache = F)
+```
+
+```{r, echo=FALSE}
+#load packages
+library(HSAUR3)   #Plasma dataset
+library(gamair)   #hubble dataset
+library(MASS)     #leuk dataset
+library(ISLR)     #Default dataset
+library(ggplot2)  #Visualization
+library(gridExtra)#Visualization
+library(stats)    #Summary Statistics
+library(dplyr)    #Data Manipulation
+```
+*No collaborators for any problem*
+
+**Problem #1:** Collett (2003) argues that two outliers need to be removed from the *plasma* data. Try to identify those two unusual observations by means of a scatterplot. 
+
+**Results:** First, per the homework rule, I plotted a scatterplot both in base R (Figure 1.1) and ggplot2 (Figure 1.2). These plots show a few candidates for removal. 
+
+Next, I chose to remove observation id numbers 13 and 29 from Figure 1.2. These two points are highlighted in green. These observations are unusual because they contain Fibrinogen levels that are far greater, than that of the remaining data, without an expected increase in the corresponding Globulin levels.
+
+The last plots, Figure 1.3(Base R) and Figure 1.4(ggplot2), provides a look at the scatterplot with these two outliers removed.
+
+```{r, echo=FALSE}
+data("plasma", package = "HSAUR3")
+
+# set row name equal to 'id' to easily identify observations
+plasma$id <- as.numeric(rownames(plasma))
+rownames(plasma) <- NULL
+# ordered the dataset by 'id'
+plasma <- plasma[order(plasma$id),]
+
+# plotted the original data without removal of two observations
+regline1 <- lm(globulin~fibrinogen, data =
+                 subset(plasma, plasma$ESR == "ESR < 20"))
+regline2 <- lm(globulin~fibrinogen, data =
+                 subset(plasma, plasma$ESR == "ESR > 20"))
+plot(plasma$globulin~plasma$fibrinogen, 
+     main = "Fibrinogen vs. Globulin\nMeasurements - Base R",
+     xlab = "Globulin", ylab = "Fibrinogen", sub = "Figure 1.1", 
+     pch = 16, col = ifelse(plasma$ESR == "ESR < 20", "red", "blue"))
+abline(regline1, col = "red")
+abline(regline2, col = "blue")
+legend("topright", c("ESR < 20", "ESR > 20"), lty = 1, 
+       col = c("red", "blue"), bty = "n")
+# used ggplot and highlighted the two observations that appear most unusual
+ggplot(plasma, aes(x = fibrinogen, y = globulin, group = ESR)) +
+  geom_point(shape = 16, aes(color = ESR)) +
+  geom_point(data = plasma[13,], color = "green", size = 5) +
+  geom_point(data = plasma[29,], color = "green", size = 5) +
+  labs(x = "Globulin", y = "Fibrinogen", 
+       title = "Fibrinogen vs. Globulin\nMeasurements - Original",
+       subtitle = "Figure 1.2") +
+  geom_text(data = plasma, size = 4, aes(label = id, hjust = 0, vjust = 0,
+                                         color = ESR)) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  geom_smooth(method = lm, se = FALSE, 
+              fullrange = TRUE, aes(color = ESR, group = ESR))
+
+# removed two most unusual observations
+plasma.new <- plasma[-c(13, 29),]
+
+# base R plot version of the below plot
+regline3 <- lm(globulin~fibrinogen, data =
+                 subset(plasma.new, plasma.new$ESR == "ESR < 20"))
+regline4 <- lm(globulin~fibrinogen, data =
+                 subset(plasma.new, plasma.new$ESR == "ESR > 20"))
+plot(plasma.new$globulin~plasma.new$fibrinogen, 
+     main = "Fibrinogen vs. Globulin Measurements\n- Updated - Base R",
+     xlab = "Globulin", ylab = "Fibrinogen", sub = "Figure 1.3", 
+     pch = 16, col = ifelse(plasma.new$ESR == "ESR < 20", "red", "blue"))
+abline(regline3, col = "red")
+abline(regline4, col = "blue")
+legend("topright", c("ESR < 20", "ESR > 20"), lty = 1, 
+       col = c("red", "blue"), bty = "n")
+# plotted new dataset without the two removed observations
+ggplot(plasma.new, aes(x = fibrinogen, y = globulin, group = ESR)) +
+  geom_point(shape = 16, aes(color = ESR)) +
+  labs(x = "Globulin", y = "Fibrinogen", 
+       title = "Fibrinogen vs. Globulin\nMeasurements - Updated",
+       subtitle = "Figure 1.4") +
+  geom_text(data = plasma.new, size = 4, aes(label = id, hjust = 0, vjust = 0,
+                                         color = ESR)) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  geom_smooth(method = lm, se = FALSE, 
+              fullrange = TRUE, aes(color = ESR, group = ESR))
+```
+
+
+**Problem #2, Part A:** Continuing from the lecture on the *hubble* data from *gamair* library, fit a quadratic regressional model.
+
+**Results:** I created a square of the distance (x), per the exercise instructions. I then fit a quadratic regression model and included the summary below. I subtracted '1' from my quadratic regression model since we were given the intercept for 'hmod' in class and in the text. 
+
+The first thing I notice from the summary, is that the \[x^2\] value is not statistically significant in the relationship with 'y'.
+
+Next, I created a sequence of x values from the hubble data set, incrementing by 0.01 from the min(x) to the max(x). Then, I used predict() function to get y values using the incremented 'x_values' and squared 'x_values'.
+
+```{r, echo=FALSE}
+data("hubble", package = "gamair")
+
+#fit a quadratic regression model and print summary
+hubble$x2 <- hubble$x ^ 2
+hubble.quad <- lm(y ~ x + x2 - 1, data = hubble)
+summary(hubble.quad)
+
+# get x & y values for the plot
+x_values <- seq(min(hubble$x), max(hubble$x), 0.1)
+y_values <- predict(hubble.quad, list(x = x_values, x2 = x_values^2))
+fitted.dat <- as.data.frame(cbind(x_values, y_values))
+# head(fitted.dat)
+```
+
+
+**Problem #2, Part B:** Plot the fitted curve from Model 2 on the scatterplot of the data. 
+
+**Results:** Using the x and y values as a data frame, we are able to plot the fitted curve, in red, on the scatterplot of hubble data. Using the quadratic regression model, this curve attempts to minimize the vertical displacement between the points and the curve. 
+
+```{r, echo=FALSE}
+# plotted hubble scatterplot with fitted curve
+fitted.plot <- 
+  ggplot(data = hubble, aes(x = x, y = y)) +
+  geom_point() +
+  labs(x = "Galaxy Distance (Mega parsecs)",
+       y = "Galaxy Relative Velocity (Kilometers per Second)",
+       title = "Hubble Data Scatterplot") +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none") +
+  geom_line(data = fitted.dat, aes(x = x_values, y = y_values,
+                                   color = "Quadratic Regression"), 
+             size = 1)
+fitted.plot
+# base R plot with fitted curve
+plot(hubble$y~hubble$x, 
+    main = "Hubble Data Scatterplot - Base R",
+    xlab = "Galaxy Distace (Mega parsecs)",
+    ylab = "Galaxy Relative Velocity (Kilometers per Second)", pch = 16)
+lines(x = fitted.dat$x_values, y = fitted.dat$y_values, col = "red", size = 1)
+```
+
+
+**Problem #2, Part C:** Add the simple linear regression fit (fitted in class) on this plot - use different color and line type to differentiate the two and add a legend to your plot.
+
+**Results:** Here I've added the simple linear regression line to the previous plot. To differentiate it from the fitted curve, and per the homework instructions, I've added it as a purple dashed line.
+
+```{r, echo=FALSE}
+# linear model from lecture
+hmod <- lm(y ~ x-1, data = hubble)
+
+# used the linear model and predict() to get set of y values for the simple linear regression line
+y_values.2 <- predict(hmod, list(x = x_values))
+fitted.dat.2 <- as.data.frame(cbind(x_values, y_values.2))
+
+# added simple linear regression line to 'fitted.plot'
+fitted.plot + 
+  geom_line(data = fitted.dat.2, aes(x = x_values, y = y_values.2, 
+                                     color = "Linear Regression"), 
+            size = 1, linetype = 2) +
+  theme(legend.position = "bottom") +
+  scale_color_manual("",
+                     breaks = c("Quadratic Regression", "Linear Regression"),
+                     values = c("purple", "red"))
+# added simple linear regression line to base R scatterplot
+plot(hubble$y~hubble$x, 
+     main = "Hubble Data Scatterplot - Base R",
+     xlab = "Galaxy Distace (Mega parsecs)",
+     ylab = "Galaxy Relative Velocity (Kilometers per Second)", pch = 16)
+lines(x = fitted.dat$x_values, y = fitted.dat$y_values, col = "red", size = 1)
+lines(x = fitted.dat.2$x_values, fitted.dat.2$y_values.2, lty = 2, col = "purple",
+      size = 1)
+legend("bottomright", 
+  legend = c("Linear Regression", "Quadratic Regression"), 
+  col = c("purple", "red"), lty = c(2,1)
+) 
+```
+
+
+**Problem #2, Part D:** Which model do you consider most sensible considering the nature of the data - looking at the plot?
+
+**Results:** Looking at the plot, it appears the simple linear regression line is most sensible. There is a cluster of data points beginning near x=15 y=1400 and the fitted curve is moving in the opposite direction from that cluster. 
+
+
+**Problem #2, Part E:** Which model is better? Provide a statistic to support your claim.
+
+**Results:** The simple linear model is better than the quadratic model in this instance. The adjusted R-squared value is slightly higher in the simple linear regression model. This model accounts for added treatments in the model.
+
+The adjusted R-squared in the simple linear model is 0.9394 and in the quadratic model it is 0.9389. R-squared represents the percentage of the variation in the response variable that can be explained by the independent variables. 
+
+Additionally, the F value for the simple linear model is more than double that of the quadratic model, indicating that the simple linear model is superior. The simple linear model also has a smaller p-value.
+
+```{r, echo=FALSE}
+summary(hmod)
+summary(hubble.quad)
+```
+
+
+**Problem #3, Part A:** The *leuk* data from package *MASS* shows the survival times from diagnosis of patients suffering from leukemia and the values of two explanatory variables, the white blood cell count (wbc) and the presence or absence of a morphological characteristic of the white blood cells (ag).
+
+Define a binary outcome variable according to whether or not patients lived for at least 24 weeks after diagnosis. Call it *surv24*.
+
+**Results:** I created a factor column in *leuk* called *surv24* that is "Yes" if the patient survived at least 24 weeks and equals "No" if the patient did not. Based on the 'Details' portion using '?leuk' I also changed 'ag' to "positive" and "negative" to represent a positive or negative result on the test.
+
+```{r, echo=FALSE}
+data("leuk", package = "MASS")
+
+# added column indicating survival as a factor
+leuk$surv24 <- as.factor(ifelse(leuk$time >= 24, "Yes", "No"))
+
+# updated ag to reflect that it indicates a positive result on the test
+leuk$ag <- as.character(leuk$ag)
+leuk$ag <- ifelse(leuk$ag == "present", "positive", "negative")
+leuk$ag <- as.factor(leuk$ag)
+head(leuk)
+```
+
+
+**Problem #3, Part B:** Fit a logistic regression model to the data with *surv24* as response. It is advisable to transform the very large white blood counts to avoid regression coefficients very close to 0 (and odds ration close to 1). You may use log transformation.
+
+**Results:** From the summary of our fitted logistic regression model, we can see that the 'ag' test results is statistically significant at alpha = 0.05. This means that there is a statistically significant relationship between the test result for 'ag' and surviving for at least 24 weeks after leukemia diagnosis. 
+
+Under the heading of 'Coefficients', we can see that 'agpositive' has a positive Estimate. From this we can deduce that having a 'positive' value in the 'ag' column makes survival of at least 24 weeks after diagnosis more likely. Conversely, we can see that the 'log(wbc)' Estimate is negative. That means that as the white blood count increases, the likelihood of surviving at least 24 weeks after diagnosis decreases. 
+
+```{r, echo=FALSE}
+# used 'family = binomial' because the response (surv24) is binary
+survival.glmfit <- glm(surv24 ~ ag + log(wbc), data = leuk, family = binomial)
+summary(survival.glmfit)
+
+# used fitted model to do predictions for survival >= 24 weeks
+survival.probs <- predict(survival.glmfit, type = 'response') * 100
+survival.predict <- as.factor(ifelse(survival.probs > 50, "Yes", "No"))
+ 
+# added the results of predict.glm to the 'leuk' dataframe as 'SurvivalProb'
+leuk <- data.frame(cbind(leuk, survival.predict))
+leuk <- data.frame(cbind(leuk, survival.probs))
+```
+
+
+**Problem #3, Part C:** Construct some graphics useful in the interpretation of the final model you fit.
+
+**Results:** There are four important illustrations for this section. Figure 3.1 shows the likelihood of surviving 24+ weeks, as predicted by the model, based on the results of the 'ag' test. As we can see, the percentage chance of surviving 24 or more weeks increases if the 'ag' test result is positive.
+
+```{r, echo=FALSE}
+# boxplot showing Surival Likelihood based on presence of ag test result
+ggplot(leuk, aes(x = ag, y = survival.probs, fill = ag)) +
+    geom_boxplot() +
+    theme(plot.title = element_text(hjust = 0.5),
+          plot.subtitle = element_text(hjust = 0.5),
+          axis.title.y.left = element_text(size = 10)) +
+  labs(x = "Auer rods and/or Granulation\nof Leukaemic CellsTest Results", y = "Survival Prediction Percentage (>= 24 wks)", title = "Survival Prediction based on 'AG' Test Results",
+         subtitle = "Figure 3.1") +
+    guides(fill = guide_legend(title = "AG Test Result"))
+# base R version of Figure 3.1
+boxplot(survival.probs~ag, data = leuk, 
+        main = "Survival Prediction based on\n'AG' Test Results - Base R",
+        xlab = "Auer rods and/or Granulation\nof Leukaemic CellsTest Results", ylab = "Survival Prediction Percentage (>= 24 wks)")
+```
+
+Figure 3.2 shows the likelihood of surviving 24+ weeks, as predicted by the model, based on the patient's white blood count. As that count increases, we see the model predicts a lesser percentage chance of surviving at least 24 weeks.
+
+```{r, echo=FALSE}
+# created a scatterplot that shows the relationship between wbc and survival probability
+ggplot(leuk, aes(x = wbc, y = survival.probs, color = ag)) +
+  geom_point(shape = 16, size = 2) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  labs(x = "White Blood Count", y = "Survival Prediction Percentage (>= 24 wks)", title = "Survival Prediction Percentage\n(>= 24 wks) by White Blood Count",
+       subtitle = "Figure 3.2") +
+  guides(color = guide_legend(title = "Test Results"))
+# base R version of Figure 3.2
+plot(survival.probs~wbc, data = leuk, 
+     main = "Survival Prediction Percentage (>= 24 wks)\nby White Blood Count - Base R",
+     xlab = "White Blood Count",
+     ylab = "Survival Prediction Percentages (>= 24 wks)")
+```
+
+Figure 3.3 shows the accuracy of our model in predicting the actual results of the study. As we can see, the model was correct 25 times out of 33 observations.
+
+```{r, echo=FALSE}
+# added column depicting the results of my prediction
+leuk$PredResult <- ifelse(leuk$surv24 == leuk$survival.predict, "Correct", "Wrong")
+table <- with(leuk, table(PredResult))
+# bar plot showing the breakdown of prediction results
+ggplot(leuk, aes((PredResult), fill = PredResult)) +
+  geom_bar(stat = "count", position = "dodge") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "none") +
+  labs(x = "Prediction Results", y = "Number", 
+       title = "Prediction Results of Fitted Model",
+       subtitle = "Figure 3.3")
+#base R variation of Figure 3.3
+barplot(table, beside = TRUE,
+        main = "Prediction Results of Fitted Model - Base R",
+        xlab = "Prediction Results",
+        ylab = "Number",
+        names.arg = c("Correct", "Wrong"),
+        col = rainbow(2))
+```
+
+Finally, we can see a Confusion Matrix summarizing the data in Figure 3.3. Also, we can deduce that the model is more accurate in predicting that a patient will not survive 24 weeks. The model is less accurate when predicting that the patient will survive at least 24 weeks.
+
+```{r, echo=FALSE}
+# confusion matrix showing correct and wrong predictions by surv24 
+ConfusionMatrix3.3 <- table(leuk$surv24, leuk$survival.predict)
+names(dimnames(ConfusionMatrix3.3)) <- c("Predicted", "Observed")
+ConfusionMatrix3.3
+```
+
+
+**Problem #3, Part D:** Fit a model with an interaction term between the two predictors. Which model fits the data better? Justify your answer.
+
+**Results:** The confusion matrices show the same level of accuracy between the two models. The histograms (Figure 3.3 and 3.4) provide the same conclusion.
+
+Even though the number of correct predictions did not change, the model with the interaction is a better *predictive* model due to difference in the AIC values. The AIC table shows the respective AICs. The Alkaike information criterion (AIC) is an estimator of the relative quality of statistical models. The AIC is used as a predictor of the success of the model for future use. 
+
+The following formula can be interpreted as being proportional to the probability that one model minimizes the (estimated) information loss. 
+\[
+e^{(AIC~min - AIC~i)/2}
+\]
+
+Using this formula, we see that the model without the interaction is only 0.5139 as probable to minimize the (estimated) information loss.
+\[
+e^{(42.16667 - 43.49815)/2} = 0.5139
+\]
+
+Despite the model with an interaction being a better predictive model, the model that best fits the data is the one with the lowest *p-value*. As we see, the model without the interaction has a lower *p-value*.
+
+To summarize, the model with the interaction is a better predictive model but **the model without the interaction better fits the data** we have. 
+
+Credit to *Burnham, K.P.; Anderson, D.R. (2002): Model Selection and Multimodel Inference: A practical information-theoretic approach (2nd ed.)*
+
+*No base R plots were included since **Part D** did not explicitly request plots.*
+
+```{r, echo=FALSE}
+# fit a model withth an interaction between the two predictors by multiplying them
+interaction.glmfit <- glm(surv24 ~ ag + log(wbc) + ag * log(wbc), data = leuk, family = binomial)
+
+# did predictions for survival based on the glm containing interaction
+interaction.probs <- predict(interaction.glmfit, type = 'response') * 100
+interaction.predict <- as.factor(ifelse(interaction.probs > 50, "Yes", "No"))
+
+# added columns to 'leuk' indicating the survival percentage and prediction based on the model containing the interaction
+leuk <- data.frame(cbind(leuk, interaction.predict))
+leuk <- data.frame(cbind(leuk, interaction.probs))
+leuk$PredResult.interaction <- ifelse(leuk$surv24 == leuk$interaction.predict, "Correct", "Wrong")
+
+# plotted the prediction results of the model containing the interaction
+ggplot(leuk, aes((PredResult.interaction), fill = surv24)) +
+  geom_bar(stat = "count", position = "dodge") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  labs(x = "Prediction Results", y = "Amount", 
+       title = "Prediction Results of Fitted Model\nwith Interaction",
+       subtitle = "Figure 3.4") +
+  guides(fill = guide_legend(title = "Survived\nat least\n24 Weeks"))
+
+# produced a confusion matrix showing the accuracy of this model
+ConfusionMatrix3.3 <- table(leuk$surv24, leuk$interaction.predict)
+names(dimnames(ConfusionMatrix3.3)) <- c("Predicted", "Observed")
+ConfusionMatrix3.3
+
+exercise_3.3_aic <- AIC(survival.glmfit)
+exercise_3.4_aic <- AIC(interaction.glmfit)
+summary(survival.glmfit)
+summary(interaction.glmfit)
+AIC_comparison <- as.data.frame(cbind(exercise_3.3_aic, exercise_3.4_aic))
+colnames(AIC_comparison) <- c("AIC without Interaction", "AIC with Interaction")
+AIC_comparison
+```
+
+
+**Problem #4, Part A:** Load the *Default* dataset from *ISLR* library. The dataset contains information on ten thousand customers. The aim here is to predict which customers will default on their credit card debt. It is a four-dimensional dataset with 10,000 observations. The question of interest is to predict individuals who will default. We want to examine how each predictor variable is related to the response (default). 
+
+Perform descriptive analysis on the dataset to have an insight. Use summaries and appropriate exploratory graphics to answer the question of interest.
+
+**Results:** Here I've provided an overall summary, a summary where default and student values were "yes", a summary where the default was "yes" and the balance was greater than the mean, and a summary where the default was "yes" and the income was less than the mean. 
+
+I've also provided a table showing the 'MeanIncome' and 'MeanBalance' for observations, grouped by 'default' and 'student' status. 
+
+Finally, there are 4 plots. Figure 4.1 shows that students appear to have a slightly fewer number of defaults, than non-students, despite there being far less students in the study. 
+
+Figure 4.2 shows that having a balance that is above average leads to more defaults.
+
+Figure 4.3 shows that having below average income makes one more likely to default. 
+
+Figure 4.4 shows that students with below average income and above average balance have a similar number of defauls despite having approximately 6,000 fewer observations.
+
+*No base R plots were included since the question did not explicitly request plots.*
+
+```{r, echo=FALSE}
+data("Default", package = "ISLR")
+# performed a few summaries to get a better picture of relationships
+summary(Default)
+summary(Default[Default$default == "Yes" & Default$student == "Yes",])
+summary(Default[Default$default == "Yes" & Default$balance > mean(Default$balance),])
+summary(Default[Default$default == "Yes" & Default$income < mean(Default$income),])
+
+# acquired means for income and budget grouped by default and student status
+Default %>%
+  group_by(default, student) %>%
+  summarize(MeanIncome = mean(income),
+            MeanBalance = mean(balance))
+
+# added two columns for visualization - set as factors
+Default$AbvAveBalance <- ifelse(Default$balance > mean(Default$balance), "Yes", "No")
+Default$AbvAveIncome <- ifelse(Default$income > mean(Default$income), "Yes", "No")
+Default$PoorStudHighBal <- ifelse(Default$student == "Yes" & 
+                                    Default$AbvAveBalance == "Yes" &
+                                    Default$AbvAveIncome == "No", 
+                                  "Yes", "No")
+Default$AbvAveBalance <- as.factor(Default$AbvAveBalance)
+Default$AbvAveIncome <- as.factor(Default$AbvAveIncome)
+Default$PoorStudHighBal <- as.factor(Default$PoorStudHighBal)
+
+# plotted relationships
+student.plot <-
+  ggplot(Default, aes(x = student, fill = default)) +
+  geom_bar() +
+  labs(x = "Student Status", y = "Default Summary",
+       title = "Defaults by Students",
+       subtitle = "Figure 4.1") +
+  guides(fill = guide_legend(title = "Defaulted")) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(size = 7, hjust = 0.5))
+balance.plot <- 
+  ggplot(Default, aes(x = AbvAveBalance, fill = default)) +
+  geom_bar() +
+  labs(x = "Above Average Balance", y = "Default Summary",
+       title = "Defaults by Balance",
+       subtitle = "Figure 4.2") +
+  guides(fill = guide_legend(title = "Defaulted")) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(size = 7, hjust = 0.5))
+income.plot <- 
+  ggplot(Default, aes(x = AbvAveIncome, fill = default)) +
+  geom_bar() +
+  labs(x = "Above Average Income", y = "Default Summary",
+       title = "Defaults by Income",
+       subtitle = "Figure 4.3") +
+  guides(fill = guide_legend(title = "Defaulted")) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(size = 7, hjust = 0.5))
+poorstudent.plot <- 
+  ggplot(Default, aes(x = PoorStudHighBal, fill = default)) +
+  geom_bar() +
+  labs(x = "Student/High Balance/Low Income", y = "Default Summary",
+       title = "Defaults by Low-Income\nStudent with High Balance",
+       subtitle = "Figure 4.4") +
+  guides(fill = guide_legend(title = "Defaulted")) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(size = 7, hjust = 0.5))
+grid.arrange(student.plot, balance.plot, ncol = 2)
+grid.arrange(income.plot, poorstudent.plot, ncol = 2)
+```
+
+
+**Problem #4, Part B:** Use R to build a logistic regression model.
+
+**Results:** I'll refer to the first model as the **'default'** model. I also did an alternative model, referenced herein as the **'alternative'** model, that removed the 'income' treatment and added 'PoorStudHighBalance' as a treatment. The **alternative** model has a slightly lower AIC score but I will retain both going forward. I will calculate the error rates of both and decide on the best model.
+
+```{r, echo=FALSE}
+
+default.glmfit <- glm(default ~ student + balance + income, data = Default, family = binomial)
+summary(default.glmfit)
+
+altdefault.glmfit <- glm(default ~ balance + student + PoorStudHighBal, data = Default, family = binomial)
+summary(altdefault.glmfit)
+```
+
+
+**Problem #4, Part C:** Discuss your result. Which predictor variables were important? Are there interactions?
+
+**Results:** In both models, the most important predictor variable is the 'balance'. This variable has a significance value of far less than 0.001. In the **default** model, 'student' is also statistically significant at 0.001.
+
+In the **alternative** model, the two variables, 'student' and 'PoorStudentHighBal', do not have a statistically significant effect on the model. They do, however, improve the AIC score which was discussed, in detail, in my results of Exercise 3, Part D. 'Balance' is still very significant. 
+
+In both models, I attempted to include other interactions - multiplying 'student' and 'balance', for example - but each iteration produced a higher AIC score than the 'base' model and the alternative model.    
+
+
+**Problem #4, Part D:** How good is your model? Assess the performance of the logistic regression classifier. What is the error rate?
+
+**Results:** After using each fitted model to predict defaults, I printed both confusion matrices. 'Def.Predicted' represents the predictions from the **default** model and 'Alt.Predicted' from the **alternative** model. From the confusion matrices, we see that the **alternative** model is superior in predicting 'default' from the Default dataset. 
+
+Lastly, I included the error rates from both models. As we can see, the error rate from the **alternative** model is 0.01% less than that of the **default** model.
+
+Based on these results, my chosen model is the **alternative** model. 
+
+```{r, echo=FALSE}
+# used each fitted model to predict default from 'Default' table
+default.probs <- predict(default.glmfit, type = 'response') * 100
+default.predict <- as.factor(ifelse(default.probs > 50, "Yes", "No"))
+altdefault.probs <- predict(altdefault.glmfit, type = 'response') * 100
+altdefault.predict <- as.factor(ifelse(altdefault.probs > 50, "Yes", "No"))
+ 
+# added the results of the two predict functions to the 'Default' dataframe
+Default <- data.frame(cbind(Default, default.predict))
+Default <- data.frame(cbind(Default, altdefault.predict))
+# subset(Default, Default$default.predict != Default$altdefault.predict)
+
+# printed confusion matrices comparing two models
+ConfusionMatrix4d <- table(Default$default, Default$default.predict)
+names(dimnames(ConfusionMatrix4d)) <- c("Def.Predicted", "Observed")
+ConfusionMatrix4d
+ConfusionMatrix4d2 <- table(Default$default, Default$altdefault.predict)
+names(dimnames(ConfusionMatrix4d2)) <- c("Alt.Predicted", "Observed")
+ConfusionMatrix4d2
+
+# calculated and printed error rates
+default.error <- (1 - ((ConfusionMatrix4d[1,1] + ConfusionMatrix4d[2,2]) /
+  sum(nrow(Default)))) * 100
+altdefault.error <- (1 - ((ConfusionMatrix4d2[1,1] + ConfusionMatrix4d2[2,2]) /
+  sum(nrow(Default)))) * 100
+
+paste("The error rate for the default model is:    ",default.error,"%")
+paste("The error rate for the alternative model is:",round(altdefault.error,
+                                                           digits = 2),"%")
+paste("The better model is the alternative model.")
+```
+
+
+**Problem #5:** Go through Section 7.3.1 of the Handbook. Run all the codes (additional exploration of data is allowed) and write your own version of explanation and interpretation.
+
+**Results:** Below I've shown the plots, as they were presented in the text. I added axis and title labels to the textbook's version for explanatory purposes. Next, I added the analogous plots using ggplot2's 'qplot' functionality.
+
+I think the ggplot version is more informative in that it shows the difference based on the factor value of ESR.
+
+```{r, echo=FALSE}
+data("plasma", package = "HSAUR3")
+
+# original plots from text with axis and title labels added
+layout(matrix(1:2, ncol = 2))
+cdplot(plasma$ESR ~ plasma$fibrinogen,
+       xlab = "Fibrinogen Level in Blood",
+       ylab = "Erythrocyte Sedimentation Rate",
+       main = "Fibrinogen's Effect\non ESR")
+cdplot(plasma$ESR ~ plasma$globulin,
+       xlab = "Globulin Level in Blood",
+       ylab = "Erythrocyte Sedimentation Rate",
+       main = "Globulin's Effect\non ESR")
+# analogous ggplot2 plots
+fibrinogenESR.plot <-
+  qplot(x = fibrinogen, fill = ESR, data = plasma, geom = "density", 
+        position = "fill") +
+  theme(legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5, size = 10),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 9)) +
+  labs(x = "Fibrinogen Level in Blood",
+       y = "Erythrocyte Sedimentation Rate",
+       title = "Fibrinogen's Effect on ESR\nggplot2")
+globulinESR.plot <-
+  qplot(x = globulin, fill = ESR, data = plasma, geom = "density", position = "fill") +
+  theme(legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5, size = 10),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 9)) +
+  labs(x = "Globulin Level in Blood",
+       y = "Erythrocyte Sedimentation Rate",
+       title = "Globulin's Effect on ESR\nggplot2")
+grid.arrange(fibrinogenESR.plot, globulinESR.plot, ncol = 2)
+```
+
+**Problem #5:** continued
+
+**Results:** Here I reproduced the summary and exponent values from the textbook. For readability, I put the Confidence Interval values in a dataframe. 
+
+There is a large confidence range, as the text mentions, due to the lack of data observations where ESR > 20. The summary of the logistic regression model shows that the treatment if 'fibrinogen' is statistically significant on ESR being greater than 20 at a level of 0.05 (0.0425). 
+
+```{r, echo=FALSE}
+plasma.glm1 <- glm(ESR ~ fibrinogen, data = plasma, family = binomial())
+summary(plasma.glm1)
+
+exp(coef(plasma.glm1)["fibrinogen"])
+
+fibrinogen.dat <- 
+  as.data.frame(exp(confint(plasma.glm1, parm = "fibrinogen")))
+fibrinogen.dat$Tails <- rownames(fibrinogen.dat)
+rownames(fibrinogen.dat) <- NULL
+colnames(fibrinogen.dat)[1] <- "Confidence Intervals"
+fibrinogen.dat
+```
+
+**Problem #5:** continued
+
+**Results:** Below we've created a different model that takes both 'fibrinogen' and 'globulin' as the treatments. We see, from the summary, that globulin does not have a  statistically significant impact on the ESR level.
+
+We also can see that the model that includes the 'globulin' treatment has a p-value of 0.1716. That means that the fitted model with 'globulin' is not statistically different than the model without 'globulin' at a level of alpha = 0.05.
+
+Next we use the anova() function to compare the previous model with this one. This function output further shows a chi square, on a single degree of freedom, that 'globulin' is not related with the ESR level. 
+
+```{r, echo=FALSE}
+plasma.glm2 <- glm(ESR ~ fibrinogen + globulin, data = plasma, family = binomial())
+summary(plasma.glm2)
+
+anova(plasma.glm1, plasma.glm2, test = "Chisq")
+```
+
+**Problem #5:** continued
+
+**Results:** The plot below shows the probability of ESR greater than 20 (larger circles) and how it is impacted by Fibrinogen and Globulin levels. We see an increasing probability of an ESR > 20 as Fibrinogen and Globulin increase.
+
+Finally, I added a ggplot2 bubbleplot to compare the aesthetics of each type of plot. In this instance, the ggplot version is not any more informative than the base R plot. Both clearly show the increasing probability of ESR > 20 with an increase in Fibrinogen and Globulin.
+
+```{r, echo=FALSE}
+prob <- predict(plasma.glm2, type = "response")*100
+
+plot(globulin ~ fibrinogen, data = plasma, xlim = c(2,6),
+     ylim = c(25,55), pch = ".", xlab = "Fibrinogen", ylab = "Globulin",
+     main = "Probability of ESR > 20\nBased on Fibrinogen & Globulin")
+symbols(plasma$fibrinogen, plasma$globulin, circles = prob,
+        add = TRUE)
+
+ggplot(plasma, aes(x = fibrinogen, y = globulin)) +
+  geom_point(size = prob, shape = 1) +
+  coord_cartesian(xlim = c(2,6), ylim = c(25,55)) +
+  labs(x = "Fibrinogen", y = "Globulin", 
+       title = "Probability of ESR > 20 Based on\nFibrinogen & Globulin - ggplot2") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+

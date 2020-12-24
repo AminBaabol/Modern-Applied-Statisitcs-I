@@ -1,0 +1,768 @@
+---
+title: "Homework #5"
+author: "Justin Robinette"
+date: "September 25, 2018"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+*No collaborators for any problem*
+
+```{r}
+library(mlbench)      #BostonHousing dataset
+library(TH.data)      #GlaucomaM dataset
+library(stats)        #R stats package
+library(rpart)        #Recursive Partitioning
+library(rpart.plot)   #rpart plotting
+library(partykit)     #Recursive Partitioning toolkit
+library(knitr)        #kable function
+library(ggplot2)      #visualization
+library(gridExtra)    #visualization
+library(randomForest) #implementation of random forest algorithm
+library(dplyr)        #data manipulation
+library(boot)         #bootstrap resampling
+library(GGally)       #correlation plotting
+library(fastAdaboost) #adaboost function
+library(ggdendro)     #dendro plotting
+```
+
+**Problem #1, Part A:** The **BostonHousing** dataset reported by Harrison and Rubinfeld (1978) is available as data.frame package **mlbench** (Leisch and Dimitriadou, 2009). The goal here is to predict the median value of owner-occupied homes in USD 1000's (medv variable) based on other predictors in the dataset. Use this dataset to do the following.
+
+Construct a regression tree using rpart(). The following need to be included in your discussion:
+  - How many nodes did your tree have?
+  - Did you prune the tree?
+  - Did it decrease the number of nodes?
+  - What is the prediction error (calculate MSE)?
+  - Provide the predicted vs. observed plot.
+
+**Results:** As we see from *Figure 1.1*, our initial regression tree (from **rpart()**) has 9 nodes. *Figure 1.2* shows the tree, as created by the model. *I've included a plot using **ggdendrogram** per homework instructions.*
+
+As this is my first time working with decision trees, I did go through the process from the text to prune the tree. *Figure 1.3* shows the Relative Error and Complexity Parameters by number of nodes. As we can see, the optimal number of nodes is 9. *Figure 1.4* summarizes the plot in *Figure 1.3*. Again, we see that the optimal number of nodes is 9. *There is an analogous ggplot per homework instructions*. 
+
+For the practice, as I mentioned above, I pruned the tree to get the number of nodes corresponding to the best 'CP' value. This returns an identical tree to our original, as we can see in *Figure 1.5*. *I've included a plot using **ggdendrogram** per homework instructions.*
+
+The predicted error (MSE) is **12.71556**, as seen in *Figure 1.6*.
+
+Lastly, I've provided a plot showing the relationship between predicted 'Median Value' and the observed values of the same variable. As we see from this relationship, plotted in *Figure 1.7*, there is a considerable amount of variation (error) in the prediction success of the model. A comparable base R plot is included.
+
+```{r}
+# load BostonHousing
+data("BostonHousing", package = "mlbench")
+
+# rpart uses random sampling so we need to set seed
+set.seed(621)
+
+# use rpart to create a regression tree and get # nodes
+bh_mod <- rpart(medv ~ ., data=BostonHousing, control = rpart.control(minsplit = 10))
+kable(sum(bh_mod$frame$var == '<leaf>'), row.names = TRUE, col.names = "Nodes",
+      caption = "Figure 1.1: Number of Nodes in Original Model")
+
+# visualize tree
+rpart.plot(bh_mod, main = "Figure 1.2: Original Tree")
+ggdendrogram(bh_mod, theme_dendro = FALSE, color = "darkgreen") +
+  labs(title = "Original Tree - ggplot") +
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 90),
+        axis.title.x = element_blank())
+
+# determining if the tree needs pruning with 'plotcp'
+plotcp(bh_mod, upper = "none", main = "Figure 1.3: CP and 'X-Error' by # Nodes",
+       col = "red")
+# creating analogous ggplot
+bh_mod_plot <-
+  ggplot(data = as.data.frame(bh_mod$cptable), aes(x = nsplit, y = xerror)) +
+  geom_point() +
+  geom_smooth(method = "loess", color = "red", SE = FALSE) +
+  labs(x = "Number of Splits", y = "X-Error",
+       title = "'X-Error' by # Splits\nggplot") +
+  theme(plot.title = element_text(hjust = 0.5))
+bh_mod_plot2 <-
+  ggplot(data = as.data.frame(bh_mod$cptable), aes(x = nsplit, y = CP)) +
+  geom_point() +
+  geom_smooth(method = "loess", color = "blue", SE = FALSE) +
+  labs(x = "Number of Splits", y = "CP", 
+       title = "CP by # Splits\nggplot") +
+  theme(plot.title = element_text(hjust = 0.5))
+grid.arrange(bh_mod_plot, bh_mod_plot2, ncol = 2)
+
+# it doesn't appear we need to prune - check optimal # nodes w/ xerror
+bh_optimal <- which.min(bh_mod$cptable[,'xerror'])
+
+# print optimal # of nodes
+kable(bh_mod$cptable[,'CP'], row.names = TRUE,
+      col.names = "Complexity Parameter",
+      caption = "Figure 1.4: CP by Node Number")
+
+# prune to optimal cp level to confirm no change to model
+bh_cp <- bh_mod$cptable[bh_optimal, 'CP']
+bh_prune <- prune(bh_mod, cp = bh_cp)
+rpart.plot(bh_prune, main = "Figure 1.5: Pruned Tree (Identical to Original)")
+ggdendrogram(bh_prune, theme_dendro = FALSE, color = "purple") +
+  labs(title = "Pruned Tree (Identical to Original) - ggplot") +
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 90),
+        axis.title.x = element_blank())
+
+# calculate MSE
+bh_predict <- predict(bh_prune, data = BostonHousing)
+bh_MSE <- mean((BostonHousing$medv - bh_predict)^2)
+kable(bh_MSE, row.names = FALSE, col.names = "Model MSE",
+      caption = "Figure 1.6: Predicted Error of Optimal Model")
+
+# plot fitted v. observed
+bh_dat <- as.data.frame(cbind(BostonHousing$medv, bh_predict))
+colnames(bh_dat) <- c("Observed", "Predicted")
+row.names(bh_dat) <- NULL
+
+# ggplot of residual vs. fitted
+ggplot(data = bh_dat, aes(x = Observed, y = Predicted)) +
+  geom_point(color = "blue") +
+  geom_smooth(method = "lm", color = "orange2") +
+  labs(xlab = "Observed Median Value (1,000 USD)",
+       ylab = "Predicted Median Value (1,000 USD)",
+       title = "Predicted vs. Observed",
+       subtitle = "Figure 1.7") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+# analogous base R plot
+plot(bh_dat$Observed, bh_dat$Predicted, 
+     xlab = "Observed", ylab = "Predicted", main = "Predicted vs. Observed")
+abline(lm(bh_dat$Predicted~bh_dat$Observed))
+```
+
+**Problem #1, Part B:** Perform bagging with 50 trees. Report the prediction error (MSE). Provide the predicted vs. observed plot.
+
+**Results:** Here I've performed bagging with 50 trees. The first summary I wanted to take a look at was the variable chosen as the root node. As we see in *Figure 1.8*, the root node is not consistently one variable over the rest. This explains part of the reason why we have such a considerable amount of variation in *Figure 1.7* above.
+
+Next, we take a look at *Figure 1.9* shows the predicted error (MSE) with bagging of **16.24467**. As we can see, this is a higher MSE than we saw with the model produced in part A of this exercise. 
+
+Lastly, in *Figure 1.10* we see the relationship between 'Predicted' and 'Observed' Median Values from *BostonHousing*. Similar to *Figure 1.7*, we see a high amount of variation between the predicted and actual values. As always, a similar base R plot is included for comparison. 
+
+```{r}
+set.seed(621)
+# create list for the rpart objects
+trees <- vector(mode = "list", length = 50)
+
+# perform bagging with 50 trees
+n <- nrow(BostonHousing)
+bootsamples <- rmultinom(length(trees), n, rep(1,n)/n)
+bh_mod2 <- rpart(medv ~ ., data = BostonHousing, 
+                 control = rpart.control(xval = 0))
+for (i in 1:length(trees))
+  trees[[i]] <- update(bh_mod2, weights = bootsamples[,i])
+
+# summarize the frequency of root node selection
+kable(table(sapply(trees, function(x) as.character(x$frame$var[1]))),
+      row.names = FALSE, col.names = c("Root Node", "Frequency"),
+      caption = "Figure 1.8: Variable Frequency as Root of Tree[i]")
+
+# calculate MSE
+bh_predict2 <- predict(bh_mod2, data = BostonHousing)
+bh_MSE2 <- mean((BostonHousing$medv - bh_predict2)^2)
+kable(bh_MSE2, row.names = FALSE, col.names = "Bagging MSE",
+      caption = "Figure 1.9: Predicted Error of Bagging")
+
+# plot predicted vs. observed
+bh_dat2 <- as.data.frame(cbind(BostonHousing$medv, bh_predict2))
+colnames(bh_dat2) <- c("Observed", "Predicted")
+row.names(bh_dat2) <- NULL
+ggplot(data = bh_dat2, aes(x = Observed, y = Predicted)) +
+  geom_point(color = "blue") +
+  geom_smooth(method = "lm", color = "orange2") +
+  labs(xlab = "Observed Median Value (1,000 USD)",
+       ylab = "Predicted Median Value (1,000 USD)",
+       title = "Predicted vs. Observed - Bagging",
+       subtitle = "Figure 1.10") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+# analogous base R plot
+plot(bh_dat2$Observed, bh_dat2$Predicted, 
+     xlab = "Observed", ylab = "Predicted", 
+     main = "Predicted vs. Observed - Bagging")
+abline(lm(bh_dat2$Predicted~bh_dat2$Observed))
+```
+
+**Problem #1, Part C:** Use randomForest() function in R to perform bagging. Report prediction error (MSE). What it the same as (b)? If they are different, what do you think caused it? Provide the predicted vs. observed plot. 
+
+**Results:** Here I used randomForest to perform bagging. In keeping with the previous exercise, I set ntree = 50. As we can see, from *Figure 1.11*, the predicted error (MSE) with this method is **10.96093**. This is an improvement from the bagging method used in part B (**16.24467**). I would think the difference from part B is due to the the way randomForest works which is to use a random sample of the variables and observations to build the trees. This difference in approach should explain why there is a different error rate in this instance.
+
+*Figure 1.12* shows that our relationship between 'Actual' and 'Predicted' median values has become less variable by using randomForest to perform bagging. Here we have a much more linear relationship than we've had in the prior 2 examples. A comparable base R plot is shown as well.
+
+*Figure 1.13* uses randomForest's **importance()** function to visually represent the importance of each Predictor Variable. As we see, after the first two variables, 'rm' and 'lstat', there is a huge drop off in importance. 'rm' stands for the average number of rooms per dwelling and 'lstat' shows the percentage of lower status of the population. I found the ranking system and difference in importance between the top 2 and remaining 11 predictor variables to be interesting here. 
+
+```{r}
+# again, we want to set a seed since random forest uses a random selection process
+set.seed(621)
+
+# us rF to perform bagging - set ntree=50 and mtry=#predictor variables to make similar to previous exercise
+bh_mod3 <- randomForest(medv ~ ., data = BostonHousing, ntree = 50, mtry = 13)
+
+# calculate MSE 
+bh_predict3 <- predict(bh_mod3, data = BostonHousing)
+bh_MSE3 <- mean((BostonHousing$medv - bh_predict3)^2)
+kable(bh_MSE3, row.names = FALSE, col.names = "randomForest Bagging MSE",
+      caption = "Figure 1.11: Predicted Error of Bagging")
+
+# plot observed vs predicted
+bh_dat3 <- as.data.frame(cbind(BostonHousing$medv, bh_predict3))
+colnames(bh_dat3) <- c("Observed", "Predicted")
+row.names(bh_dat3) <- NULL
+ggplot(data = bh_dat3, aes(x = Observed, y = Predicted)) +
+  geom_point(color = "blue") +
+  labs(xlab = "Observed Median Value (1,000 USD)",
+       ylab = "Predicted Median Value (1,000 USD)",
+       title = "Predicted vs. Observed - randomForest Bagging",
+       subtitle = "Figure 1.12") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+# analogous base R plot
+plot(bh_dat3$Observed, bh_dat3$Predicted, 
+     xlab = "Observed", ylab = "Predicted", 
+     main = "Predicted vs. Observed -randomForest Bagging")
+
+# prep to plot importance by predictor variable
+importance <- importance(bh_mod3)
+factor.importance <- data.frame(Variables = row.names(importance), 
+                            Importance = importance)
+colnames(factor.importance) <- c("Variables", "Importance")
+row.names(factor.importance) <- NULL
+rank.importance <- factor.importance %>%
+  mutate(Rank = paste0('#',dense_rank(desc(Importance))))
+
+# Use ggplot2 to visualize the relative importance of variables
+ggplot(rank.importance, aes(x = reorder(Variables, Importance), 
+    y = Importance, fill = Importance)) +
+  geom_bar(stat= "identity") + 
+  geom_text(aes(x = Variables, y = 0.5, label = Rank),
+    hjust=0, vjust=0.55, size = 4, color = 'red') +
+  labs(x = "Factors",
+       title = "randomForest Variable Importance\nfor BostonHousing",
+       subtitle = "Figure 1.13") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  coord_flip()
+```
+
+**Problem #1, Part D:** Use randomForest() function in R to perform random forest. Report the prediction error (MSE). Provide the predicted vs. observed plot. For this we do not need to change mtry.
+
+
+**Results:** For this exercise we've used randomForest and calculated MSE while using the default 'ntree' and 'mtry' value for randomForest. This default 'mtry' is calculated with the following formula (rounded down:
+\[\sqrt(n_{predictorvariables})\]
+\[mtry = \sqrt13 = 3.61 = 3\]
+
+As we see from *Figure 1.14*, the MSE is lower using the default 'mtry' value (3) than it was using an 'mtry' value of 50. *Figure 1.15* shows a similarly close relationship between actual and predicted median values that we saw in *Figure 1.12* above. 
+
+Again, I've included a plot showing the importance of each predictor variable. *Figure 1.16* summarizes this data. Similar to *Figure 1.13* above, 'rm' and 'lstat' are the two most important variables. Contrary to *Figure 1.13*, *Figure 1.16* below shows a higher importance placed on other variables - namely 'ptratio', 'nox', 'indus' and 'dis'. These variables correspond to the following:
+- pupil-teacher ratio by town
+- nitric oxides concentration (parts per 10 million)
+- proportion of non-retail business acres per town
+- weighted distances to five Boston employment centres
+
+Based on the above descriptions, I find it easy to see why 'ptratio', 'indus', and 'dis' have a higher influence on median value. The relative importance of 'nox' is interesting and may warrant more independent research on my part. 
+
+```{r}
+# again, we want to set a seed since random forest uses a random selection process
+set.seed(621)
+
+# us rF to perform bagging with default mtry
+bh_mod4 <- randomForest(medv ~ ., data = BostonHousing)
+
+# calculate MSE 
+bh_predict4 <- predict(bh_mod4, data = BostonHousing)
+bh_MSE4 <- mean((BostonHousing$medv - bh_predict4)^2)
+kable(bh_MSE4, row.names = FALSE, col.names = "randomForest MSE",
+      caption = "Figure 1.14: Predicted Error of randomForest")
+
+# plot observed vs predicted
+bh_dat4 <- as.data.frame(cbind(BostonHousing$medv, bh_predict4))
+colnames(bh_dat4) <- c("Observed", "Predicted")
+row.names(bh_dat4) <- NULL
+ggplot(data = bh_dat4, aes(x = Observed, y = Predicted)) +
+  geom_point(color = "blue") +
+  labs(xlab = "Observed Median Value (1,000 USD)",
+       ylab = "Predicted Median Value (1,000 USD)",
+       title = "Predicted vs. Observed - randomForest",
+       subtitle = "Figure 1.15") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+# analogous base R plot
+plot(bh_dat4$Observed, bh_dat4$Predicted, 
+     xlab = "Observed", ylab = "Predicted", 
+     main = "Predicted vs. Observed - randomForest")
+
+# prep to plot importance by predictor variable
+importance <- importance(bh_mod4)
+factor.importance <- data.frame(Variables = row.names(importance), 
+                            Importance = importance)
+colnames(factor.importance) <- c("Variables", "Importance")
+row.names(factor.importance) <- NULL
+rank.importance <- factor.importance %>%
+  mutate(Rank = paste0('#',dense_rank(desc(Importance))))
+
+# Use ggplot2 to visualize the relative importance of variables
+ggplot(rank.importance, aes(x = reorder(Variables, Importance), 
+    y = Importance, fill = Importance)) +
+  geom_bar(stat= "identity") + 
+  geom_text(aes(x = Variables, y = 0.5, label = Rank),
+    hjust=0, vjust=0.55, size = 4, color = 'red') +
+  labs(x = "Factors",
+       title = "randomForest Variable Importance\nfor BostonHousing",
+       subtitle = "Figure 1.16") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  coord_flip()
+```
+
+**Problem #1, Part E:** Provide a table containing each method and associated MSE. Which method is more accurate?
+
+**Results:** *Figure 1.17* shows the summary of each method and its associated Mean Square Error ordered by accuracy. The most accurate method is the randomForest method with the default value used for 'mtry'. The least favorable method, as we can see, was the rpart bagging method with 50 trees. 
+
+```{r}
+# create a summary table of MSEs
+sum_table <- as.data.frame(rbind(rpart=bh_MSE, rpart_bagging=bh_MSE2, 
+                                 rF_13=bh_MSE3, rF_default=bh_MSE4))
+sum_table$Method <- row.names(sum_table)
+row.names(sum_table) <- NULL
+sum_table <- sum_table[c(2,1)]
+colnames(sum_table) <- c("Method", "MSE")
+sum_table <- sum_table[order(sum_table$MSE, decreasing = FALSE),]
+
+# present summary table
+kable(sum_table, row.names = FALSE,
+      caption = "Figure 1.17: Comparison of Error Rate by Method")
+```
+
+**Problem #2, Part A:** Consider the glacoma data (data = **"GlaucomaM"**, package = **"TH.data"**).
+
+Build a logistic regression model. Note that most of the predictor variables are highly correlated. Hence, logistic regression model using the whole set of variables will not work here as it is sensitive to correlation. 
+
+glac_glm <- glm(Class ~ ., data = GlaucomaM, family = "binomial")
+warning messages  -- variable selection needed
+
+The solution is to select variables that seem to be important in predicting the response and using those in modeling process using GLM. One way to do this is by looking at the relationship between the response and predictors using graphical or numerical summaries - this tends to be tedious. Secondly, we can use a formal variable selection approach. The *step()* function will do this in R. Using *step*, choose any direction for variable selection and fit logistic regression model. Discuss the model and error rate. 
+
+Do not print out the summaries of every single model built using variable selection. That will end up being dozens of pages long and not worth reading through. Your discussion needs to include the direction you chose. You may only report on the final model, the summary of that model, and the error rate associated with that model.
+
+**Results:** The exercise tells us that building a logistic regression model with *Class* as the response variable and the remaining 62 variables as *Class'* treatment produces a warning due to multicollineary. First, we can take a look at a couple of correlation plots to visualize some of the variable correlations. 
+
+*Figure 2.1* looks at the first 6 'independent' variables and the correlations between them. We see the correlation is very strong among these variables, as the question stated they would be. *Figure 2.2* shows another sample that depicts the strong correlation among many of the variables in the data set. I've included comparable base R plots for review. 
+
+In the interest of space, I will not go through all 62 predictor variables, but it is safe to say that there are strong correlations between treatment variables. Next, I will do model selection to build a model that avoids the **dummy variable trap**.
+
+```{r}
+# imported data set
+data("GlaucomaM", package = "TH.data")
+GlaucomaM$Class <- ifelse(GlaucomaM$Class == 'normal', 0, 1)
+
+# visually examine some correlations between variables
+ggpairs(data = GlaucomaM[,1:6],
+        upper = list(continuous = wrap("cor", size = 3)),
+        lower = list(continuous = "smooth")) +
+  labs(title = "First Sample of GlaucomaM Variable Correlation",
+       subtitle = "Figure 2.1") +
+  theme(plot.title = element_text(hjust=0.5),
+        plot.subtitle = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 90, hjust = 1))
+ggpairs(data = GlaucomaM[,7:12],
+        upper = list(continuous = wrap("cor", size = 3)),
+        lower = list(continuous = "smooth")) +
+  labs(title = "Second Sample of GlaucomaM Variable Correlation",
+       subtitle = "Figure 2.2") +
+  theme(plot.title = element_text(hjust=0.5),
+        plot.subtitle = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 90, hjust = 1))
+pairs(~., data = GlaucomaM[,1:6], upper.panel = NULL,
+      main = "First Sample of GlaucomaM\nVariable Correlation-base R")
+pairs(~., data = GlaucomaM[,7:12], upper.panel = NULL,
+      main = "Second Sample of GlaucomaM\nVariable Correlation-base R")
+```
+
+**Results, con't:** To remove highly correlated variables, first I took the tedious approach. I removed any that have a correlation greater than 0.6 (or less that -0.6) with another treatment variable. Once these highly correlated treatment variables were removed, I created training(70%) and test(30%) sets to predict against overfitting. 
+
+Following this form of variable selection, I fit a logistic regression model using the variables that had made my arbitrary 'cut line'.
+
+Next, for comparison, I created stepwise models beginning with all of the original 62 independent variables. These stepwise models use the *step()* function's *backward* and *forward* methodologies.
+
+Once I had the 3 models, I created *Figure 2.3* to compare the AIC values of the three models (manual, backward, forward). As we see, using the **step** function improves the model with the *backward* stepwise method being superior to *forward*, according to AIC. The *manual* step method produces a model with a higher (worse) AIC value. 
+
+*Figure 2.4* shows a comparison of error rate. Despite the difference in AIC from the above figure, we see that the *forward* step actually performs better on the test data. 
+
+Lastly, I've included the formulas from each model in *Figure 2.5*. First we see the original model that includes all possible predictor variables. Next, we see the model that was derived from my manual variable selection process of removing all variables that had a correlation with another variable that was greater than the absolute value of 0.6. The *backward* and *forward* models are next showing that we have fewer variables using the *forward* stepwise method.
+
+Based on the model's simplicity and improved accuracy on the test dataset, the best model appears to be the one created by the *forward* stepwise model. 
+```{r}
+# create training and test with full data set
+sample <- 0.7 * nrow(GlaucomaM)
+set.seed(621)
+train_indices <- sample(seq_len(nrow(GlaucomaM)), size = sample)
+train <- GlaucomaM[train_indices,]
+test <- GlaucomaM[-train_indices,]
+
+# create 'none' model for stepwise methods
+glaucoma_none <- glm(Class ~ 1, data = train, family = 'binomial')
+# create 'start' model for stepwise methods
+glaucoma_start <- glm(Class ~., data = train, family = 'binomial')
+
+#######################################
+###### Manual Variable Selection ######
+#######################################
+# remove Class from data set
+glauc_vars <- GlaucomaM[,-c(63)]
+
+# set cors to abs / corr = 1 to 0 / repeats = 0
+glauc_cor <- as.data.frame(abs(cor(glauc_vars)))
+diag(glauc_cor) <- 0
+glauc_cor[lower.tri(glauc_cor)] <- 0
+
+# subset cors less than .6
+lower_cor <- glauc_vars[,!apply(glauc_cor, 2, function(col) any(col > 0.6))]
+
+# combine the variables with cors less than .6 with Class
+# change colname 
+GlaucomaM_dat <- as.data.frame(cbind(lower_cor, GlaucomaM[,63]))
+colnames(GlaucomaM_dat)[7] <- "Class"
+
+# create second training and test with simplified data set
+set.seed(621)
+train2 <- GlaucomaM_dat[train_indices,]
+test2 <- GlaucomaM_dat[-train_indices,]
+
+# fit full logistic regression model from smaller set of available variables
+glaucoma_glm <- glm(Class ~., data = train2, family = 'binomial')
+
+
+#########################################
+###### Stepwise Variable Selection ######
+#########################################
+# use step for variable selection suppressing step by step output
+glaucoma_back <- step(glaucoma_start, data = train, trace = 0, direction = 'backward')
+glaucoma_forward <- step(glaucoma_none, data = train, direction = 'forward',
+                         scope = formula(glaucoma_start),
+                         trace = 0)
+
+# compare model AIC
+kable(cbind(glaucoma_glm$aic, 
+            glaucoma_back$aic, glaucoma_forward$aic), 
+      row.names = FALSE,
+      col.names = c("Manual Var-Select AIC", "Backward Step AIC", 
+                    "Forward Step AIC"),
+      caption = "Figure 2.3: AIC Comparison")
+
+# calculate error of Models
+# predict Class with each model
+glm_probs <- round(predict(glaucoma_glm, newdata = test2, type = 'response'),2)
+glm_predict <- as.factor(ifelse(glm_probs > 0.5, 1, 0))
+back_probs <- round(predict(glaucoma_back, newdata = test, type = 'response'),2)
+back_predict <- as.factor(ifelse(back_probs > 0.5, 1, 0))
+fwd_probs <- round(predict(glaucoma_forward, newdata = test, type = 'response'),2)
+fwd_predict <- as.factor(ifelse(fwd_probs > 0.5, 1, 0))
+
+
+# calc errors from conf. matrix of each method
+glm_confmat <- table(cbind(test2[7], glm_predict))
+names(dimnames(glm_confmat)) <- c("Observed","Back Predict")
+glm_error <- (1-((glm_confmat[1,1] + glm_confmat[2,2])/
+                    sum(nrow(test2))))
+
+back_confmat <- table(cbind(test[63], back_predict))
+names(dimnames(back_confmat)) <- c("Observed","Back Predict")
+back_error <- (1-((back_confmat[1,1] + back_confmat[2,2])/
+                    sum(nrow(test))))
+
+fwd_confmat <- table(cbind(test[63], fwd_predict))
+names(dimnames(fwd_confmat)) <- c("Observed","Fwd Predict")
+fwd_error <- (1-((fwd_confmat[1,1] + fwd_confmat[2,2])/
+                    sum(nrow(test))))
+
+
+# compare model error
+kable(cbind(glm_error, back_error, fwd_error), 
+      row.names = FALSE,
+      col.names = c("Manual Var-Select Error", "Backward Step Error", 
+                    "Forward Step Error"),
+      caption = "Figure 2.4: Error Rates by Stepwise Methods")
+
+# provide formulas of each model in this exercise
+summary_paste <- noquote(paste("Figure 2.5: Formulae Summary","",
+                               "Full Model Independent Variables-->",formula
+              (glaucoma_start)[3],"--- 62 Predictor Variables ---","",
+              "Manual Variable Selection Model Independent Variables-->",
+              formula(glaucoma_glm)[3],
+              "--- 6 Predictor Variables ---","",
+              "Backward Step Model Independent Variables-->",
+              formula(glaucoma_back)[3],"--- 19 Predictor Variables ---","",
+              "Forward Step Model Independent Variables-->",
+              formula(glaucoma_forward)[3],
+              "--- 12 Predictor Variables ---",
+              sep = "\n"))
+
+cat(summary_paste[1])
+```
+
+**Problem #2, Part B:** Build a logistic regression model with K-fold cross-validation (k = 10). Report the error rate.
+
+**Results:** The first step here is to create a cost function to include in the model creation. We utilized our formula, with k=10 and the cost function to derive the error rate. *Figure 2.6* shows us the error rate for our logistic regression model is **0.559322** which is surprisingly high.
+
+```{r}
+set.seed(621)
+# define threshold with cost function
+cost <- function(r, pi = 0)
+  mean(abs(r-pi) > 0.5)
+
+# use 10-fold CV and get error rate
+k10_error <- cv.glm(data = test, glaucoma_forward, K=10, cost)$delta[1]
+
+# summarize error rate for 10-fold CV
+kable(k10_error, row.names = FALSE, col.names = "Error Rate",
+      caption = "Figure 2.6: Error Rate with K-Fold K=10")
+```
+
+**Problem #2, Part C:** Find a function (package in R) that can conduct the "adaboost" ensemble modeling. Use it to predict glaucoma and report error rate. 
+
+**Results:** Here we use the **fastAdaboost** library to conduct *adaboost* modeling. We set the 'nIter' = 500 and calculated the error.
+
+*Figure 2.7* summarizes the error we received from the boosting model, which is **0.1525424**
+
+```{r}
+set.seed(621)
+# use adaboost function with forward formula and GlaucomaM dataset
+glaucoma_boost <- adaboost(formula(glaucoma_forward), 
+                         data = train, nIter = 500)
+
+# calculate probabilities and predict Class
+boost_probs <- predict(glaucoma_boost, newdata = test,
+                             type = 'response')
+boost_probs <- boost_probs$prob[,2]
+boost_predict <- as.factor(ifelse(boost_probs > 0.5, 1, 0))
+
+# calculate error using confusion matrix
+boost_confmat <- table(cbind(test[63], boost_predict))
+names(dimnames(boost_confmat)) <- c("Observed","Boost Predict")
+boost_error <- (1-((boost_confmat[1,1] + boost_confmat[2,2])/
+                    sum(nrow(test))))
+
+# summarize error with Adaboost
+kable(boost_error, row.names = FALSE, col.names = "Error Rate",
+      caption = "Figure 2.7: Error Rate with Adaboost")
+```
+
+
+**Problem #2, Part D:** Report the error rates based on single tree, bagging, and random forest. (A table would be great for this).
+
+**Results - Single Tree:** Here we fit a model with the predictor variables that we chose during the variable selection process. We plotted the original tree in *Figure 2.8 I've included a plot using **ggdendrogram** per homework instructions.* From the tree, we see the first two splits are along the variables of *varg* and *phci*.
+
+Next we used *plotcp* to take a look at the CP and X-Error by the number of nodes This plot is summarized by *Figure 2.9*. From this we can see that 2 has the lowest error while 3 has the 2nd lowest. 
+
+Using CP and X-Error, we pruned the tree to the optimal level and printed that new tree in *Figure 2.10*. *Figure 2.11* gives out error rate, which is **0.1694915**.
+
+*I've included a plot using **ggdendrogram** per homework instructions.*
+
+```{r}
+# rpart uses random sampling so we need to set seed
+set.seed(621)
+
+# use rpart to create a regression tree and get # nodes
+glauc_mod <- rpart(formula(glaucoma_forward), data=train, control = rpart.control(minsplit = 10))
+
+# visualize tree
+rpart.plot(glauc_mod, main = "Figure 2.8: Original Tree")
+ggdendrogram(glauc_mod, theme_dendro = FALSE, color = "blue",
+             leaf_labels = FALSE) +
+  labs(title = "Original Tree - ggplot") +
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 90),
+        axis.title.x = element_blank())
+
+# determining if the tree needs pruning with 'plotcp'
+plotcp(glauc_mod, upper = "none", main = "Figure 2.9: CP and 'X-Error' by # Nodes",
+       col = "red")
+glauc_mod_plot <-
+  ggplot(data = as.data.frame(glauc_mod$cptable), aes(x = nsplit, y = xerror)) +
+  geom_point() +
+  geom_smooth(method = "loess", color = "red", SE = FALSE) +
+  labs(x = "Number of Splits", y = "X-Error",
+       title = "'X-Error' by # Splits\nggplot") +
+  theme(plot.title = element_text(hjust = 0.5))
+glauc_mod_plot2 <-
+  ggplot(data = as.data.frame(glauc_mod$cptable), aes(x = nsplit, y = CP)) +
+  geom_point() +
+  geom_smooth(method = "loess", color = "blue", SE = FALSE) +
+  labs(x = "Number of Splits", y = "CP", 
+       title = "CP by # Splits\nggplot") +
+  theme(plot.title = element_text(hjust = 0.5))
+grid.arrange(glauc_mod_plot, glauc_mod_plot2, ncol = 2)
+# it doesn't appear we need to prune - check optimal # nodes w/ xerror
+glauc_opt <- which.min(glauc_mod$cptable[,'xerror'])
+
+# print optimal # of nodes
+kable(cbind(glauc_mod$cptable[,'CP'], glauc_mod$cptable[,'xerror']), 
+      row.names = TRUE, col.names = c("Complexity Parameter", "Error"),
+      caption = "Figure 2.9: CP and Error by Node Number")
+
+# prune to optimal cp level 
+glauc_cp <- glauc_mod$cptable[glauc_opt, 'CP']
+glauc_prune <- prune(glauc_mod, cp = glauc_cp)
+rpart.plot(glauc_prune, main = "Figure 2.10: Pruned Tree")
+ggdendrogram(glauc_prune, theme_dendro = FALSE, color = "purple") +
+  labs(title = "Pruned Tree") +
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 90),
+        axis.title.x = element_blank())
+
+# set model
+glauc_tree <- glm(Class~varg, data = GlaucomaM, family = 'binomial')
+
+# calculate probabilities and predict Class
+tree_probs <- round(predict(glauc_tree, newdata = test, type = 'response'),2)
+tree_predict <- as.factor(ifelse(tree_probs > 0.5, 1, 0))
+
+# calculate error using confusion matrix
+tree_confmat <- table(cbind(test[63], tree_predict))
+names(dimnames(tree_confmat)) <- c("Observed","Tree Predict")
+tree_error <- (1-((tree_confmat[1,1] + tree_confmat[2,2])/
+                    sum(nrow(test))))
+
+# summarize error with Single Tree
+kable(tree_error, row.names = FALSE, col.names = "Error Rate",
+      caption = "Figure 2.11: Error Rate with Single Tree")
+```
+
+**Results - Bagging:** Here I used bagging with a length of 25 to calculate my error rate using my variables chosen during the variable selection portion of this assignment. 
+
+The nice thing about bagging is, as it iterates through, it shows which variable was chosen as the root node for this iteration. This information is summarized in *Figure 2.12*. Here, as we saw with the 'one tree' version above, *varg* and *phci* are again important variables. We also can see that *vars* and *tmg* were chosen in multiple interations as the root node. 
+
+*Figure 2.13* shows our error rate from bagging as **0.2542373**. 
+
+```{r}
+set.seed(621)
+# create list for the rpart objects
+trees3 <- vector(mode = "list", length = 25)
+
+# perform bagging with 50 trees
+n <- nrow(train)
+bootsamples <- rmultinom(length(trees3), n, rep(1,n)/n)
+glauc_mod2 <- rpart(formula(glaucoma_forward), data = train, 
+                 control = rpart.control(xval = 0))
+for (i in 1:length(trees3))
+  trees3[[i]] <- update(glauc_mod2, weights = bootsamples[,i])
+
+# summarize the frequency of root node selection
+kable(table(sapply(trees3, function(x) as.character(x$frame$var[1]))),
+      row.names = FALSE, col.names = c("Root Node", "Frequency"),
+      caption = "Figure 2.12: Variable Frequency as Root of Tree[i]")
+
+# calculate probabilities and predict Class
+bag_probs <- round(predict(glauc_mod2, newdata = test),2)
+bag_predict <- as.factor(ifelse(bag_probs > 0.5, 1, 0))
+
+# calculate error using confusion matrix
+bag_confmat <- table(cbind(test[63], bag_predict))
+names(dimnames(bag_confmat)) <- c("Observed","Bagging Predict")
+bag_error <- (1-((bag_confmat[1,1] + bag_confmat[2,2])/
+                    sum(nrow(test))))
+
+# summarize error with Bagging
+kable(bag_error, row.names = FALSE, col.names = "Error Rate",
+      caption = "Figure 2.13: Error Rate with Bagging")
+```
+
+**Results - Random Forest:** In this exercise, we use Random Forest functionality to predict GlaucomaM's *Class* variable. In this example, we get an error rate equal to **0.1355932**. This value is shown in *Figure 2.14*.
+
+```{r}
+set.seed(621)
+
+# us rF 
+glauc_mod3 <- randomForest(formula(glaucoma_forward), data = train)
+
+# calculate probabilities and predict Class
+rf_probs <- round(predict(glauc_mod3, newdata = test),2)
+rf_predict <- as.factor(ifelse(rf_probs > 0.5, 1, 0))
+
+# calculate error using confusion matrix
+rf_confmat <- table(cbind(test[63], rf_predict))
+names(dimnames(rf_confmat)) <- c("Observed","Bagging Predict")
+rf_error <- (1-((rf_confmat[1,1] + rf_confmat[2,2])/
+                    sum(nrow(test))))
+
+# summarize error with Bagging
+kable(rf_error, row.names = FALSE, col.names = "Error Rate",
+      caption = "Figure 2.14: Error Rate with randomForest")
+```
+
+**Problem #2, Part E:** Write a conclusion comparing the above results (use a table to report models and corresponding error rates). Which is the best model?
+
+**Results:** The best models are the *Forward Stepwise Model* and the *Random Forest* model. By far the worst performing model is the K-Folds model with k=10. Bagging with 'trees' = 25 also performs relatively worse than the other models. 
+
+```{r}
+kable(cbind(fwd_error, k10_error, boost_error, tree_error, bag_error, rf_error),
+      row.names = FALSE, 
+      col.names = c("Forward Step", "K-10 Folds",
+                    "Adaboost", "Single Tree",
+                    "Bagging", "Random Forest"),
+      caption = "Figure 2.15: Summary of Error Rates by Model")
+```
+
+**Problem #2, Part F:** From the above analysis, which variables seem to be important in predicting Glaucoma?
+
+**Results:** The two best performing models are the Forward Step and Random Forest methods. *Figure 2.16* re-summarizes the model, showing which independent variables were used in the creation of the superior model.
+
+Since these are the same variables used in the Random Forest model, I've plotted the importance by variable to see which are most important in predicting GlaucomaM's 'Class' variable. *Figure 2.17* shows that the most important predictor variables are: *varg*, *vars* and *phci*. 
+
+To further scrutinize this, we look at our results from 'bagging' that show which variables were chosen as the root node and the frequency in which they were chosen. *Figure 2.18* seems to confirm that the three variables mentioned above are among the predictors most important to predicting Glaucoma. 
+
+```{r}
+final_sum <- noquote(paste("Figure 2.16: Forward Stepwise Formuula -->",formula
+              (glaucoma_forward)[3], sep = '\n'))
+cat(final_sum[1])
+
+# manipulate importance to facilitate an imformative plot
+importance_glauc <- glauc_mod3$importance
+fact.import <- data.frame(Variables = row.names(importance_glauc), 
+                            Importance = importance_glauc)
+colnames(fact.import) <- c("Variables", "Importance")
+row.names(fact.import) <- NULL
+rank.import <- fact.import %>%
+  mutate(Rank = paste0('#',dense_rank(desc(Importance))))
+
+# Use ggplot2 to visualize the relative importance of variables
+ggplot(rank.import, aes(x = reorder(Variables, Importance), 
+    y = Importance, fill = Importance)) +
+  geom_bar(stat= "identity") + 
+  geom_text(aes(x = Variables, y = 0.5, label = Rank),
+    hjust=0, vjust=0.55, size = 4, color = 'red') +
+  labs(x = "Factors",
+       title = "Importance for GlaucomaM",
+       subtitle = "Figure 2.17") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  coord_flip()
+
+# summarize the frequency of root node selection
+kable(table(sapply(trees3, function(x) as.character(x$frame$var[1]))),
+      row.names = FALSE, col.names = c("Root Node", "Frequency"),
+      caption = "Figure 2.18: Variable Frequency as Root of Tree[i]")
+```

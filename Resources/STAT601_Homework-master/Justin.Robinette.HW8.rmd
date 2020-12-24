@@ -1,0 +1,366 @@
+---
+title: "Homework #8"
+author: "Justin Robinette"
+date: "October 16, 2018"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+*No collaborators for any problem*
+
+```{r}
+library(HSAUR3)         #clouds dataset
+library(TH.data)        #bodyfat dataset
+library(gamlss.data)    #db dataset
+library(stats)          #statistics package
+library(knitr)          #kable
+library(broom)          #glance
+library(ggplot2)        #visualization
+library(gridExtra)      #visualization
+library(wordcloud)      #textplot
+library(rpart)          #recursive partitioning
+library(partykit)       #regression tree plotting
+library(ggdendro)       #ggplot regression tree
+library(lattice)        #visualization
+library(quantreg)       #quantile regression
+```
+
+**Problem #1, Part A:** Consider the **clouds** data from the **HSAUR3** package. Review the linear model fitted to this data in Chapter 6 of the text book and report model findings.
+
+**Results:** Here I reported the results of the linear fitted model from Chapter 6. *Figure 1.1* shows the p-value of the model (**0.024**) is significant at an alpha of 0.05.
+
+*Figure 1.2* shows the influence the predictors have on predicting rainfall. As we would expect based on the formula provided, **seeding** (whether seeding has occurred) has the most statistically significant impact followed by **sne** (suitability criterion). Lastly, *Figure 1.3* and *Figure 1.4* show the betastar and standard error values, respectively, by variable. 
+
+Next, *Figure 1.5* examines the relationship between **rainfall** and **sne** by **seeding**, as the text did. Here we use both ggplot2 and base R to compare. Lastly, *Figure 1.6* recreates the text plot of residual values using ggplot and base R. We see the values are spread pretty evenly about 0. 
+
+```{r}
+data("clouds", package = "HSAUR3")
+
+# model from chapter 6
+clouds_formula <- rainfall ~ seeding + seeding:(sne + cloudcover + prewetness + echomotion) + time
+clouds_lm <- lm(clouds_formula, data = clouds)
+cloud_sum <- summary(clouds_lm)
+
+# review of model
+kable((glance(cloud_sum)$p.value), col.names = "P-Value",
+      caption = "Figure 1.1: Model P-Value")
+kable(cloud_sum$coefficients[,4], col.names = "P-Values",
+      caption = "Figure 1.2: Variable P-Values in Model")
+kable(coef(clouds_lm), col.names = "Beta_star",
+      caption = "Figure 1.3: Variable Beta_star Estimates")
+Vbetastar <- vcov(clouds_lm)
+kable(as.data.frame(sqrt(diag(Vbetastar))), col.names = "Standard Errors",
+      caption = "Figure 1.4: Variable Standard Errors")
+
+# prep for plotting
+clouds_resid <- residuals(clouds_lm)
+clouds_fitted <- fitted(clouds_lm)
+psymb <- as.numeric(clouds$seeding)
+# plot relationship from page 115
+ggplot(data = clouds, aes(x = sne, y = rainfall)) +
+  geom_point(aes(shape = seeding, color = seeding), size = 3) +
+  geom_smooth(aes(color = seeding), fullrange = TRUE, se = FALSE, method = "lm") +
+  labs(title = "Regression Relationship by Seeding",
+       subtitle = "Figure 1.5", x = "S-Ne criterion", y = "Rainfall Amount") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+plot(rainfall ~ sne, data = clouds, pch = psymb,
+     xlab = "S-Ne criterion", ylab = "Rainfall Amount",
+     main = "Regression Relationship by\nSeeding - base R")
+abline(lm(rainfall ~ sne, data = clouds, subset = seeding == "no"))
+abline(lm(rainfall ~ sne, data = clouds, subset = seeding == "yes"),
+       lty = 2)
+legend("topright", legend = c("No seeding", "Seeding"), pch = 1:2, lty = 1:2, bty = "n")
+
+# plotting residuals from page 116
+resid_plot <- augment(clouds_lm)
+ggplot(resid_plot, aes(x = .fitted, y = .resid, label = rownames(resid_plot))) +
+  geom_point(shape = 15, color = "white", size = 6) +
+  geom_text(data = resid_plot, size = 5, aes(label = rownames(resid_plot))) +
+  geom_hline(yintercept = 0, lty = 2) +
+  labs(title = "Residuals vs. Fitted", subtitle = "Figure 1.6", 
+       x = "Fitted", y = "Residuals") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+  
+plot(clouds_fitted, clouds_resid, xlab = "Fitted Values",
+     ylab = "Residuals", main = "Residuals vs. Fitted\nbase R", type = "n",
+     ylim = max(abs(clouds_resid)) * c(-1, 1))
+abline(h = 0, lty = 2)
+textplot(clouds_fitted, clouds_resid, words = rownames(clouds),
+         new = FALSE)
+```
+
+**Problem #1, Part B:** Fit a median regression model.
+
+**Results:** I fit a median regression model and printed the call. 
+
+```{r}
+clouds_quantile <- rq(clouds_formula, data = clouds,tau = 0.5)
+quant_sum <- summary.rq(clouds_quantile, covariance = TRUE, hs=TRUE)
+quant_sum$call
+```
+
+**Problem #1, Part C:** Compare the two results.
+
+**Results:** *Figure 1.7* and *Figure 1.8* compare coefficient values from the two models. The first thing I notice is that the p-values increased across the board for each variable when going to the Median Regression method. 
+
+*Figure 1.9* is included for comparison and recreates *Figure 1.5* above showing the relationship between **rainfall** and **sne** by **seeding**. *Figure 1.10* shows the relationships of the same variables using the median regression method. The most interesting part, to me, is that the slope of the line when **seeding** is absent has went from negative to positive. It appears that the median regression lines ignore the outliers more than the linear approach. 
+
+*Figure 1.10* shows the mean square error values by seeding factor between each method. The linear method does a much better job when there is no seeding. The errors are closer between the two models when seeding does occur. 
+
+```{r}
+# compare model p-values and betastar values
+kable(cbind(cloud_sum$coefficients[,4],quant_sum$coefficients[,4]), 
+      col.names = c("Linear P-Values", "Median Regression P-Values"), 
+      caption = "Figure 1.7: Comparison of Variable P-Values")
+kable(cbind(cloud_sum$coefficients[,1], quant_sum$coefficients[,1]),
+      col.names = c("Linear Beta_star", "Median Regression Beta_star"),
+      caption = "Figure 1.8: Comparison of Variable Beta_star")
+
+# plot comparisons
+lm_plot <-
+  ggplot(data = clouds, aes(x = sne, y = rainfall)) +
+  geom_point(aes(shape = seeding, color = seeding), size = 3) +
+  geom_smooth(aes(color = seeding), fullrange = TRUE, se = FALSE, method = "lm") +
+  labs(title = "Linear Regression Relationship by Seeding",
+       subtitle = "Figure 1.9", x = "S-Ne criterion", y = "Rainfall Amount") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+rq_plot <-
+  ggplot(data = clouds, aes(x = sne, y = rainfall)) +
+  geom_point(aes(shape = seeding, color = seeding), size = 3) +
+  geom_smooth(aes(color = seeding), fullrange = TRUE, se = FALSE, method = rq) +
+  labs(title = "Median Regression Relationship by Seeding",
+       subtitle = "Figure 1.10", x = "S-Ne criterion", y = "Rainfall Amount") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+grid.arrange(lm_plot, rq_plot)
+
+# compare MSEs of models
+# separate models by seeding
+lm_yes <- lm(rainfall ~ sne, data = clouds, subset = seeding == "yes")
+lm_no <- lm(rainfall ~ sne, data = clouds, subset = seeding == "no")
+rq_yes <- rq(rainfall ~ sne, data = clouds, subset = seeding == "yes")
+rq_no <- rq(rainfall ~ sne, data = clouds, subset = seeding == "no")
+
+# error rate function
+get.error.rate <- function(model,predicted.variable ,data){
+  predicted <- predict(model, data= data)
+# Calculate MSE
+  mse <- mean((predicted.variable - predicted)^2)
+  return(as.data.frame(mse))
+}
+
+# get MSEs and print
+library(reshape2)
+lm_mse <- cbind(get.error.rate(lm_yes, clouds$rainfall, data = clouds),
+                get.error.rate(lm_no, clouds$rainfall, data = clouds))
+colnames(lm_mse) <- c("Seeding", "No Seeding")
+lm_mse <- melt(lm_mse)
+rq_mse <- cbind(get.error.rate(rq_yes, clouds$rainfall, data = clouds),
+                get.error.rate(rq_no, clouds$rainfall, data = clouds))
+colnames(rq_mse) <- c("Seeding", "No Seeding")
+rq_mse <- melt(rq_mse)
+kable(cbind(lm_mse, rq_mse), col.names = c("Linear Model", "MSE", "Median Regression Model", "MSE"), caption = "Figure 1.11: MSE Comparison")
+
+```
+
+**Problem #2, Part A:** Reanalyze the **bodyfat** data from the **TH.data** package.
+
+Compare the regression tree approach from chapter 9 of the textbook to the median regression and summarize the different findings.
+
+**Results:** In this exercise, I compare the regression tree approach to the median regression method to see which is a better predictor of **bodyfat** based on the data. I used the model from page 175 of the text book to create my decision tree and then utilized the same predictors in the median regression model for comparison.
+
+*Figure 2.1* shows the tree prior to pruning. We see that **waistcirc** is the root node  splitting at 88.4. Pruning technique was used but, as I show in *Figure 2.2*, pruning was not needed for this model.
+
+*Figure 2.3* shows the median regression model that was fit for comparing with the decision tree method. I used *Figure 2.4* to show the p-values of the various predictors within the model. Hip and Waist size are the best predictors, according to this chart. 
+
+I then used ggplot to show the relationship between bodyfat and hip size (*Figure 2.5*) and bodyfat and waist size (*Figure 2.6*). I used the opposite predictor variable to denote the color of the plot point. If the observation contains a value above the split point of the decision tree, it is a blue triangle. If the observation is below the split point, it is a red circle. 
+
+Lastly, *Figure 2.7* shows a comparison of the two methods' Mean Square Error values. As we see, with this dataset, the decision tree method has a better error rate than the median regression method. 
+
+```{r}
+data("bodyfat", package = "TH.data")
+
+# build regression tree from page 175 of text and plotted
+set.seed(621)
+bodyfat_rpart <- rpart(DEXfat ~ age + waistcirc + hipcirc + elbowbreadth + 
+                         kneebreadth, data = bodyfat,
+                       control = rpart.control(minsplit = 10))
+# plot similar to text and add ggplot
+plot(main = "Figure 2.1: Original Tree", as.party(bodyfat_rpart), 
+     gp = gpar(fontsize = 8), tp_args = (list(id = FALSE)))
+ggdendrogram(bodyfat_rpart, theme_dendro = FALSE, color = "darkgreen") +
+  labs(title = "Original Tree - ggplot") +
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 90),
+        axis.title.x = element_blank())
+
+# prune technique from text
+opt <- which.min(bodyfat_rpart$cptable[,"xerror"])
+cp <- bodyfat_rpart$cptable[opt, "CP"]
+bodyfat_prune <- prune(bodyfat_rpart, cp = cp)
+# plot pruned tree
+plot(main = "Figure 2.2: Pruned Tree", as.party(bodyfat_prune),
+     gp = gpar(fontsize = 8), tp_args = (list(id = FALSE)))
+ggdendrogram(bodyfat_prune, theme_dendro = FALSE, color = "blue") +
+  labs(title = "Pruned Tree - ggplot") +
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 90),
+        axis.title.x = element_blank())
+
+# fit median regression model
+bodyfat_rq <- rq(DEXfat ~ age + waistcirc + hipcirc + elbowbreadth + kneebreadth, data = bodyfat, tau = 0.5)
+rq_sum <- summary.rq(bodyfat_rq, covariance = TRUE, hs = TRUE)
+paste("Figure 2.3: Model Call")
+rq_sum$call
+# determine most important predictors
+kable(rq_sum$coefficients[,4], col.names = "P-Values",
+      caption = "Figure 2.4: P-Values by Variable")
+# plot comparison using statistically significant variables
+ggplot(data = bodyfat, aes(x = hipcirc, y = DEXfat))  +
+  geom_point(aes(shape = waistcirc > 88.4, color = waistcirc > 88.4), size =2) +
+  geom_smooth(aes(color = waistcirc > 88.4), fullrange = TRUE, se = FALSE, method = rq) +
+  labs(title = "Bodyfat Relationship with Hip Size by Waist Size",
+       subtitle = "Figure 2.5", x = "Hip Circumference", 
+       y = "Bodyfat (Measured by DXA)") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+ggplot(data = bodyfat, aes(x = waistcirc, y = DEXfat))  +
+  geom_point(aes(shape = hipcirc > 96.25, color = hipcirc > 96.25), size =2) +
+  geom_smooth(aes(color = hipcirc > 96.25), fullrange = TRUE, se = FALSE, method = rq) +
+  labs(title = "Bodyfat Relationship with Waist Size by Hip Size",
+       subtitle = "Figure 2.6",
+       x = "Waist Circumference", 
+       y = "Bodyfat (Measured by DXA)") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+# compare error rates
+bodyfat_predict <- predict(bodyfat_prune, data = bodyfat)
+bodyfat_MSE <- mean((bodyfat$DEXfat - bodyfat_predict)^2)
+kable(cbind(bodyfat_MSE, get.error.rate(bodyfat_rq, bodyfat$DEXfat)),
+      col.names = c("Regression Tree MSE", "Median Regression MSE"),
+      caption = "Figure 2.7: Error Rate of Bodyfat Predictors")
+```
+
+
+**Problem #2, Part B:** Choose one independent variable. For the relationship between this variable and DEXfat, create linear regression quantile models for the 25%, 50%, and 75% quantiles. Plot DEXfat vs that independent variable and plot the lines from the models on the graph.
+
+**Results:** For this exercise, I chose **hipcirc** as my independent variable because, as I showed in *Figure 2.4*, this variable has the lowest p-value inside of the model that was created. 
+
+I used the quantile values of 25%, 50% and 75% as lines on the plotted relationship between **bodyfat** and **hipcirc** in *Figure 2.8*. We see the 50% quantile is centered best among the observations. *An analogous base R plot is included per assignment instructions.*
+
+```{r}
+# chose hip size because it was the best predictor in the median regression model above
+fat_rq25 <- rq(DEXfat ~ hipcirc, data = bodyfat, tau = 0.25)
+fat_rq50 <- rq(DEXfat ~ hipcirc, data = bodyfat, tau = 0.50)
+fat_rq75 <- rq(DEXfat ~ hipcirc, data = bodyfat, tau = 0.75)
+
+# get data frame of coefficients
+fat_quants <- rq(DEXfat ~ hipcirc, data = bodyfat, tau = c(0.25, 0.5, 0.75))
+quant_df <- as.data.frame(t(coef(fat_quants)))
+colnames(quant_df) <- c("intercept", "slope")
+quant_df$quantile <- rownames(quant_df)
+
+# plot relationships
+ggplot(data = bodyfat, aes(x = hipcirc, y = DEXfat)) +
+  geom_point() +
+  geom_abline(aes(intercept = intercept, slope = slope, color = quantile),
+              data = quant_df) +
+  labs(title = "Quantile Regression Models for Hip Size\nand Bodyfat Relationship",
+       subtitle = "Figure 2.8", x = "Hip Size", y = "Bodyfat (Measured by DXA)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_color_manual(labels = c("25%", "50%", "75%"), values = rainbow(3)) +
+  guides(color = guide_legend(title = "Quantiles"))
+plot(bodyfat$hipcirc, bodyfat$DEXfat, xlab = "Hip Size", ylab = "Bodyfat",
+     main = "Quantile Regression Models for Hip Size and\nBodyfat Relationship - base R")
+abline(fat_rq25, lty=1, col="green")
+abline(fat_rq50, lty=2, col="red")
+abline(fat_rq75, lty=3, col="purple")
+legend("topleft", 
+       legend = c("25%", "50%", "75%"), col = c("green", "red", "purple"),
+       lty = 1:3, bty = "n")
+```
+
+**Problem #3:** Consider **db** data from the lecture notes (package **gamlss.data**). Refit the additive quantile regression models presented (**rqssmod**) with varying values of lambda in **qss**. How do the estimated quantile curves change?
+
+**Results:** Here I took the lecture notes provided, used my own tau values, and created a function that accepts **lambda** and returns the xyplots. 
+
+The shrinkage factor allows the quantile lines to smooth out the larger the **lambda** value. At lambda = 0, the plot is very unsmooth. By lambda = 0.2, the lines have smoothed considerable at the various quantile values. By lambda = 1, we see very little smoothing as the lambda is increased. 
+
+```{r}
+data("db", package = "gamlss.data")
+db2 <- db
+tau <- c(.01, .33, .67, .99)
+
+# create function that produces various plots depending on lambda
+quant_curve <- function (lambda){
+# code from lecture notes
+rqssmod <- vector(mode = "list", length = length(tau))
+db2$lage <- with(db2, age^(1/3))
+for (i in 1:length(tau))
+  rqssmod[[i]] <- rqss(head ~ qss(lage, lambda = lambda),
+                       data = db2, tau = tau[i])
+gage <- seq(from = min(db2$age), to = max(db2$age), length = 100)
+p <- sapply(1:length(tau), function(i) {predict(rqssmod[[i]],
+     newdata = data.frame(lage = gage ^ (1/3)))})
+pfun <- function(x, y, ...) {
+  panel.xyplot(x = x, y = y, ...)
+  apply(p, 2, function(x) panel.lines(gage, x))
+  panel.text(rep(max(db2$age), length(tau)),
+             p[nrow(p),], label = tau, cex = 0.9)
+}
+# create plot in function
+xyplot(head ~ age, data = db2, 
+       main = paste("Age vs. Head Circumference for\nLambda =", lambda),
+       xlab = "Age (years)",
+       ylab = "Head Circumference (cm)", pch = 19,
+       scales = list(x = list(relation = "free")),
+       layout = c(1,1), col = rgb(.1, .1, .1, .1),
+       panel = pfun)
+}
+quant_curve(0)
+quant_curve(0.05)
+quant_curve(0.2)
+quant_curve(1)
+quant_curve(5)
+```
+
+**Problem #4:** Read the paper by Koenker and Hallock (2001) posted on D2L. Write a one page summary of the paper. This should include, but not limited to, an introduction, motivation, case study considered and findings. 
+
+**Results:** 
+
+**Introduction:**
+As modern computing has evolved, so has the availability and usage of statistical computing software for purposes of quantile regression. This paper describes the quantile regression method and how it can be used with a variety of datasets. 
+
+Koenker provides a brief overview of some R functionality including how to gain more information through the use of various help features. An excellent explanation of the *summary()* function is provided as well.
+
+
+**Motivation:**
+Quantile Regression provides potentially more successful fits to data due to its estimation of the median. This allows for better fitting model especially when outliers are present that can have a more significant affect on the mean than on the median. 
+
+As compared to the Least Squares Method, which is examined through the Engel example, this method can produce a better fit. In the Engel example, there are two extreme outliers that have a heavy impact on the fit when using a Least Squares Method. By utilitizing Quantile Regression, we are able to achieve better fit. 
+
+**Case Study & Findings:**
+One example used to discuss the functionality of quantile regression, as discussed above, is the Engel dataset regarding Food Expenditures vs. Household Income. As Koenker shows, the use of a mean instead of a median, which is what is used in quantile regression, can significantly skew the fit. 
+
+In this example, the Least Squares Method fit an intercept well above that of the quantile regression method due to two outliers where income is very high and food expenditures are low.  In fact, the intercept has been skewed so far upward that the intercept has become a "centercept" as Koenker notes is Tukey terminology. This skews the model and makes a Least Squares model less accurate.
+
+**Conclusion:**
+The primary thing that I took away from this paper is that the quantile regression method is incredibly useful in many different types of situations. When working with data containing larger outliers, the mean provides misleading interpretations of the data whereas the median (quantile) method can provide a better, more accurate fit.
+
+

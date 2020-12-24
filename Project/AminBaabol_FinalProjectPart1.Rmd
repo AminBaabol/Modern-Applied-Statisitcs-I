@@ -1,0 +1,217 @@
+---
+title: "Final Project Part 1"
+author: "Amin Baabol"
+date: "11/28/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+#Assumption
+##The outcome is a dichotomous variable
+##There is a linear relationship between the logit of the outcome and each predictor
+variable such that logit(p) = log(p/(1-p))
+##There is no highly influencial, extreme, or outlier in the continuous predictors
+## There is no highly correlated or multicollinearity among the predictors
+In order for the model is to be reliable and accurate these assumptions should hold true.
+
+One way to measure multicollinearity is the variance inflation factor (VIF),
+which assesses how much the variance of an estimated regression coefficient 
+increases if your predictors are correlated.  If no factors are correlated,
+the VIFs will all be 1.
+
+If the VIF is equal to 1 there is no multicollinearity among factors, but if the 
+VIF is greater than 1, the predictors may be moderately correlated. The output 
+above shows that the VIF for the Publication and Years factors are about 1.5, which
+indicates some correlation, but not enough to be overly concerned about. A VIF 
+between 5 and 10 indicates high correlation that may be problematic. And if the 
+VIF goes above 10, you can assume that the regression coefficients are poorly 
+estimated due to multicollinearity.
+
+
+```{r}
+library(Flury)
+library(Flury)
+library(tidyverse)
+library(caret)
+library(MASS)
+library(boot)
+library(DataExplorer)
+library(gridExtra)
+library(car)
+library(MLmetrics)
+library(reshape2) 
+library(mosaic)
+data(microtus)
+
+set.seed(123)
+#subset of the original data that only contains the known samples
+#train data and validation data will be partition from the known subset
+known.subset <- subset(microtus,
+                        microtus$Group == "multiplex"|microtus$Group == "subterraneus")
+#test data
+unknown.subset <- subset(microtus,microtus$Group == "unknown")
+
+```
+
+#Descriptive analysis
+```{r}
+#converting categorical binary into numeric binary
+known.subset$Group <- ifelse(known.subset$Group == "multiplex",1,0)
+known.subset
+
+summary(known.subset)
+summary(unknown.subset)
+```
+
+
+#Visualization
+```{r}
+#Visualizing M1Left by Specie
+M1Left <-ggplot(data = known.subset) +
+  stat_density(aes(M1Left,fill = Group)) +
+  labs(title = 'M1Left by Specie',
+       x = 'Width of upper left molar 1 (0.001mm)',
+       y = 'Density')
+
+#Visualizing M2Left by Specie
+M2Left <- ggplot(data = known.subset) +
+  stat_density(aes(M2Left,fill = Group)) +
+  labs(title = 'M2Left by Specie',
+       x = 'Width of upper left molar 2 (0.001mm)',
+       y = 'Density')
+#Visualizing M3Left by Specie
+M3Left <- ggplot(data = known.subset) +
+  stat_density(aes(M3Left,fill = Group)) +
+  labs(title = 'M3Left by Specie',
+       x = 'Width of upper left molar 3 (0.001mm)',
+       y = 'Density')
+#Visualizing Foramen by Specie
+Foramen <- ggplot(data = known.subset) +
+  stat_density(aes(Foramen,fill = Group)) +
+  labs(title = 'Foramen by Specie',
+       x = 'Length of incisive foramen (0.001mm)',
+       y = 'Density')
+#Visualizing Pbone by Specie
+Pbone <- ggplot(data = known.subset) +
+  stat_density(aes(Pbone,fill = Group)) +
+  labs(title = 'Pbone by Specie',
+       x = 'Length of palatal bone (0.001mm)',
+       y = 'Density')
+#Visualizing Length by Specie
+Length <- ggplot(data = known.subset) +
+  stat_density(aes(Length,fill = Group)) +
+  labs(title = 'Length by Specie',
+       x = 'Condylo incisive length or skull length (0.01mm)',
+       y = 'Density')
+#Visualizing Height by Specie
+Height <- ggplot(data = known.subset) +
+  stat_density(aes(Height,fill= Group)) +
+  labs(title = 'Height by Specie',
+       x = 'Skull height above bullae (0.01mm)',
+       y = 'Density')
+#Visualizing Rostrum by Specie
+Rostrum <- ggplot(data = known.subset) +
+  stat_density(aes(Rostrum,fill = Group)) +
+  labs(title = 'Rostrum by Specie',
+       x = 'Skull width across rostrum (0.01mm)',
+       y = 'Density')
+grid.arrange(M1Left,M2Left)
+grid.arrange(M3Left,Foramen)
+grid.arrange(Pbone,Length)
+grid.arrange(Height,Rostrum)
+
+#Correlation
+plot_correlation(known.subset)
+```
+
+#Partioning data
+```{r}
+
+#splitting the known subset
+set.seed(56)
+partition <- sample(1:nrow(known.subset),size = 0.8*nrow(known.subset))
+data.train <- known.subset[partition,]
+data.validate <- known.subset[-partition,]
+data.train
+data.validate
+```
+
+
+#Model construction
+```{r}
+set.seed(89)
+#model 1
+full.model <- glm(Group ~.,data = known.subset,family = binomial())
+
+#selecting variables based on AIC using stepwise selection
+step.model <- stepAIC(full.model,direction = "both",trace = FALSE)
+
+#model2
+reduce.model <- glm(Group ~ M1Left+M3Left+Foramen+Length,
+                        data = known.subset,family = binomial())
+#model 3
+log.model <- glm(Group ~ log(M1Left)+log(M3Left)+log(Foramen)+log(Length),
+                        data = known.subset,family = binomial())
+
+#MSE comparison of the models using the validation dataset
+MSE1 <- mean((full.model$residuals)^2)
+MSE.full.model <- mean((predict(full.model,newdata = known.subset,
+                               type = "response")- known.subset$Group)^2)
+MSE.reduce.model <- mean((predict(reduce.model,newdata = known.subset,
+                               type ="response")-known.subset$Group)^2)
+MSE.log.model <- mean((predict(log.model,newdata = known.subset,
+                               type ="response")-known.subset$Group)^2)
+MSE.full.model
+MSE.reduce.model
+MSE.log.model
+
+
+```
+#Resampling
+##Cross validation:PRESS statistic
+
+```{r}
+library(boot)
+cost <- function(r, pi = 0)
+  mean(abs(r-pi) > 0.5)
+MSE.model1.cv10 <- mean(cv.glm(known.subset,full.model, K = 10)$delta)
+MSE.model2.cv10 <- mean(cv.glm(known.subset,reduce.model, K = 10)$delta)
+MSE.model3.cv10 <- mean(cv.glm(known.subset,log.model, K = 10)$delta)
+
+MSE.model1.cv10
+MSE.model2.cv10
+MSE.model3.cv10
+
+```
+
+
+
+##Bootstrapping
+```{r}
+library(boot)
+set.seed(373)
+# function to return bootstrapped coefficients
+myLogitCoef <- function(data, indices, formula) {
+    d <- data[indices,]
+    fit <- glm(formula, data = d, family = binomial())
+    return(coef(fit))}
+model2 <- glm(Group ~. -1,
+              data = known.subset,
+              family = binomial())
+
+coef.boot <- boot(data = unknown.subset,
+                  statistic = myLogitCoef,
+                  R = 100, 
+                  formula = model2$formula)
+
+summary(model2)
+Confint(coef.boot)
+coef.boot
+```
+
+
+
+

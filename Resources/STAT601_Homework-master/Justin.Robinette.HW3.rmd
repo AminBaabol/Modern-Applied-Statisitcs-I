@@ -1,0 +1,560 @@
+---
+title: "Homework #3"
+author: "Justin Robinette"
+date: "September 11, 2018"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+*No collaborators for any problem*
+
+```{r}
+library(HSAUR3)     #bladdercancer dataset
+library(ISLR)       #Default & Smarket datasets
+library(ggplot2)    #data visualization
+library(ggmosaic)   #data visualization
+library(dplyr)      #data manipulation
+library(reshape2)   #data manipulation
+library(knitr)      #report generation
+library(broom)      #statistics
+library(boot)       #bootstrap resampling
+library(splines)    #regression functions/classes
+library(devtools)   #package development tools
+```
+
+**Problem #1, Part A:** Use the **bladdercancer** data from the 'HSAUR3' library to construct graphical and numerical summaries that will show the relationship between tumor size and the number of recurrent tumors. Discuss your discovery. *(Hint: mosaic plot may be the best way to assess this.)*  
+
+**Results:** I first plotted a stacked barplot (*Figure 1.1*) that shows the **number** of occurences of each number of recurrent tumors variable by tumor size. As we see from this illustration, at a number of 1 recurrent tumors, most are smaller than 3 cm. As we move to 2 and 3 recurrent tumors, the proportion of tumors that are less than 3 cm shrinks. By the 3 and 4 recurrent tumors, about half of the tumors were greater than 3 cm. There is an analogous base R plot included as well.
+
+Next, I included a mosaic plot (*Figure 1.2*) that also shows how the **proportion** of tumors greater than 3 cm grows as the number of recurrent tumors increases. Again, there is a comparable base R version of this plot included for review. We again see, from these plots, how the proportion of tumors greater than 3 cm increases as the number of recurrent tumors increases.
+
+Lastly, I've included a table depicting the information in the mosaic plot Figure 1.2 (*Figure 1.3*). This table shows a breakdown by the *Number of Recurrent Tumors*, *Tumor Size* and *Percentage of Total*. The percentage column corresponds to the percentage of observations containing the corresponding 'RecurrentTumors' based on 'TumorSize'. 
+
+```{r}
+# load bladdercancer data set
+data(bladdercancer, package = "HSAUR3")
+
+# ggplot bar plot
+ggplot(data = bladdercancer) +
+  geom_bar(aes(x = bladdercancer$number, fill = bladdercancer$tumorsize)) +
+  labs(x = "Number of Recurrent Tumors",
+       y = "Number of Observations",
+       title = "Number of Recurrent Tumors\nby Tumor Size",
+       subtitle = "Figure 1.1") +
+  guides(fill = guide_legend(title = "Tumor Size")) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_fill_manual(values = c("yellow", "purple"))
+# analogous base r plot
+count <- table(bladdercancer$tumorsize, bladdercancer$number)
+barplot(count, xlab = "Number of Recurrent Tumors", ylab = "Number of Observations",
+        main = "Number of Recurrent Tumors by\nTumor Size - Base R",
+        col = c("yellow", "purple"),
+        legend.text = TRUE,
+        args.legend = list(title = "Tumor Size"))
+
+# ggplot mosaic plot
+ggplot(data = bladdercancer) + 
+  geom_mosaic(aes(weight = number, x = product(number), fill = tumorsize)) +
+  scale_fill_manual(values = c("green", "blue")) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        panel.grid = element_blank(),
+        panel.background = element_blank()) +
+  labs(x = "Number of Recurrent Tumors", y = "Proportion by Tumor Size",
+       title = "Proportion of Recurrent Tumors by Tumor Size",
+       subtitle = "Figure 1.2") +
+  guides(fill = guide_legend(title = "Tumor\nSize")) +
+  scale_y_continuous(breaks = seq(0, 1, by=.25))
+# analogous base r plot
+mosaicplot(xtabs(~ number + tumorsize, data = bladdercancer),
+           color = c("green", "blue"),
+           xlab = "Number of Recurrent Tumors", ylab = "Proportion by Tumor Size",
+           main = "Proportion of Recurrent Tumors by\nTumor Size - Base R")
+
+# summarizing data for numeric display
+bc.dat <- 
+  bladdercancer %>%
+  group_by(number, tumorsize) %>%
+  summarize(n = n()) %>%
+  mutate(number.count = sum(n),
+         number.prop = n/sum(n)) %>%
+  ungroup()
+# created a numeric (table) display of the proportion
+bc.dat$number.count <- NULL
+bc.dat$n <- NULL
+bc.dat$number.prop <- round(bc.dat$number.prop*100, 2)
+colnames(bc.dat) <- c("Recurrent Tumors", "TumorSize", "Percentage")
+kable(bc.dat, row.names = FALSE, caption = "Figure 1.3")
+```
+
+
+**Problem #1, Part B:** Use the **bladdercancer** data from 'HSAUR3' library to build a Poisson regression that estimates the effect of size of tumor on the number of recurrent tumors. Discuss your results.  
+
+**Results:** First, we look at a summary of a Poisson regression that has 'number' of recurrent tumors as the response with 'time' and 'tumorsize' as the treatments. This model will be used as a comparison to a model with just 'number' and 'tumorsize' to help us visualize the effect of 'tumorsize' on the 'number'. We see that, in this model, none of the variables are statistically significant. We can see that 'Tumorsize > 3cm' has a positive relationship with the 'number'. Our AIC for this model is 88.568. 
+
+```{r}
+bc.poisson1 <- glm(number ~ time + tumorsize, data = bladdercancer, family = poisson())
+summary(bc.poisson1)
+```
+
+Next, we look at a summary of a similar Poisson regression model that, this time, has 'number' again as the dependent variable and only 'tumorsize' as the treatment, **as the question requests**. With this model, we see an intercept p-value of 0.034, which is significant at an *alpha* = 0.05. Additionally, the AIC is lower which indicates a superior model. Despite the improvement in the model when 'time' is removed as an independent variable, we still see that 'tumorsize' does not impact 'number' in a statistically significant manner.
+
+```{r}
+bc.poisson2 <- glm(number ~ tumorsize, data = bladdercancer, family = poisson())
+summary(bc.poisson2)
+```
+
+Finally, lets look at a comparison of the AIC values to confirm that the 2nd model, which has 'number' as response and 'tumorsize' as treatment, is superior to the 1st model which includes 'time' as a treatment variable. Figure 1.3 shows that *Model #2* is slightly better, due to a small variation in model AIC values, *despite 'tumorsize' not being a significant treatment of the response 'number'*.
+
+```{r}
+# obtained the AIC of both models
+poisson.1 <- bc.poisson1$aic
+poisson.2 <- bc.poisson2$aic
+
+# kabel summary of AIC comparison
+kable(cbind(poisson.1, poisson.2), row.names = FALSE, col.names = 
+        c("AIC of Model #1", "AIC of Model #2"),
+      caption = "Figure 1.3: Comparison of AIC Values by Model")
+```
+
+**Problem #2, Part A:** The following data is the number of new AIDS cases in Belgium between the years of 1981 - 1993. Let *t* denote time.
+y <- c(12, 14, 33, 50, 67, 74, 123, 141, 165, 204, 253, 246, 240)
+t <- 1:13
+
+Plot the relationship between number of AIDS cases against time. Comment on the plot. 
+
+**Results:** First, I made the 'time' variable more specific by changing it from 1,2,...13 to specify the year (1981, 1982....1993). Next I included both a ggplot and base R plot showing the relationship between the number of AIDS cases and the year.
+
+As we can see, there appears to be a strong relationship between the number of cases and the year. As the year gets bigger, the number of cases grows. I've added a regression line to the plots to help show the relationship between the two variables. 
+
+```{r}
+# data brought in from question
+y <- c(12, 14, 33, 50, 67, 74, 123, 141, 165, 204, 253, 246, 240)
+t <- 1:13
+
+# created data frame
+aids.dat <- data.frame(Time = t, Number = y)
+# changed data frame to obe more informative
+aids.dat$Time <- c(1981, 1982, 1983, 1984, 1985, 1986, 1987, 1988,
+                   1989, 1990, 1991, 1992, 1993)
+colnames(aids.dat) <- c("Year", "Number")
+
+# plotted the number of cases vs the year in ggplot
+ggplot(data = aids.dat, aes(x = Year, y = Number)) +
+  geom_point(color = "red") +
+  geom_smooth(method = "lm", se = FALSE, color = 'green') +
+  labs(x = "Year", y = "Number of AIDS Cases",
+       title = "AIDS Cases in Belgium from 1981-1993",
+       subtitle = "Figure 2.1") +
+  scale_x_continuous(breaks = seq(1981, 1993, 1)) +
+  scale_y_continuous(breaks = seq(0, 300, 25)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "none")
+# analogous base r plot
+plot(aids.dat$Number ~ aids.dat$Year,
+     xlab = "Year", ylab = "Number of AIDS Cases",
+     main = "AIDS Cases in Belgium from 1981-1993\nBase R",
+     xaxt = "n")
+axis(1, at = seq(1981, 1993, by = 1), las = 2)
+abline(lm(aids.dat$Number~aids.dat$Year))
+```
+
+
+**Problem #2, Part B:** Fit a Poisson regression model \[log(\mu_i) = \beta_0 + \beta_1t_i\]. Comment on the model parameters and residuals (deviance) vs Fitted plot.
+
+**Results:** Here, I fit a Poisson Regression model with 'Number' as the response variable and 'Time' as the treatment. We see, from the summary, that time has a significant positive influence on the number of cases. 
+
+The plot below (Figure 2.2) shows that the data is overdispersed. The 3 years with the largest absolute standardized residuals correspond to 1981, 1982, and 1993 (time = 1, 2, and 13). These points are labeled with **blue** dots on Figure 2.2. An analogous *Base R* plot is included for comparison. In the *Base R* plot, the largest absolute residuals are identified by the numbered points. The numbers correspond to the years of 1981, 1982, and 1993. These are the 1st, 2nd, and 13th years in our data set.
+
+```{r}
+# fit poisson model per instructions
+aids.poisson <- glm(Number ~ Year, data = aids.dat, family = poisson)
+summary(aids.poisson)
+
+# augment() used to obtain .fitted and .resid
+aidsdf <- augment(aids.poisson)
+
+# plotted residual vs. fitted in ggplot
+ggplot(aidsdf, aes(.fitted, .resid)) +
+  geom_point(color = "red") +
+  geom_point(data = aidsdf[1,], color = "blue") +
+  geom_point(data = aidsdf[2,], color = "blue") +
+  geom_point(data = aidsdf[13,], color = "blue") +
+  geom_smooth(se = FALSE, color = "green") +
+  labs(x = "Predicted Values", y = "Residuals",
+       title = "Residuals vs. Fitted\nPoisson Model",
+       subtitle = "Figure 2.2") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_x_continuous(breaks = seq(3.0, 6.5, 0.5))
+# analogous base r plot
+plot(aids.poisson, which = 1)
+```
+
+
+**Problem #2, Part C:** Now add a quadratic term in time \[log(\mu_i) = \beta_0 + \beta_1t_i + \beta_2t^2_i\] and fit the model. Comment on the model parameters and assess the residual plots.
+
+**Results:** Here I've added a quadratic term, to the Poisson model discussed in *Part B*, and fit the model. I've plotted the Residuals vs. Fitted again and highlighted the 3 largest absolute standardized residuals in **blue** on Figure 2.3. These correspond to the years 1982, 1986, and 1991.
+
+This plot shows that the Poisson model that includes the quadratic is not overdispersed as compared to the plot in Figure 2.2. I've included a Base R plot here for comparison.
+
+```{r}
+# new model with added 2nd degree polynomial to aids.poisson 
+aids.quad <- glm(Number ~ Year + I(Year^2), data = aids.dat,
+                 family = poisson())
+summary(aids.quad)
+
+# broom library's augment() function to obtain .fitted and .resid
+aidsdf2 <- augment(aids.quad)
+
+# ggplot of residual vs. fitted
+ggplot(aidsdf2, aes(.fitted, .resid)) +
+  geom_point(color = "red") +
+  geom_point(data = aidsdf2[2,], color = "blue") +
+  geom_point(data = aidsdf2[6,], color = "blue") +
+  geom_point(data = aidsdf2[11,], color = "blue") +
+  geom_smooth(se = FALSE, color = "green") +
+  labs(x = "Predicted Values", y = "Residuals",
+       title = "Residuals vs. Fitted\nPoisson Model with Quadratic",
+       subtitle = "Figure 2.3") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_x_continuous(breaks = seq(2.0, 6.5, 0.5))
+# analogous base R plot
+plot(aids.quad, which = 1)
+```
+
+
+**Problem #2, Part D:** Compare the two models using AIC. Which model is better?
+
+**Results:** As we can see below, the model that includes a quadratic term, (\[time^2\]), is superior due to its lower AIC. With AIC, as the difference between AIC values increases, we get stronger evidence for one model over another. In this case, the Poisson Quadratic model has an AIC that is a little more than half the size of the Poisson Regression model's AIC. This indicates that we prefer the model with the quadratic term over the model without the quadratic term. 
+
+```{r}
+# kable summary of comparison of AIC
+kable(cbind(aids.poisson$aic, aids.quad$aic), row.names = FALSE,
+      col.names = c("Poisson Model AIC", 
+                    "Poisson Quadratic Model AIC"),
+      caption = "Figure 2.4: Comparison of Model AIC Values")
+```
+
+
+**Problem #2, Part E:** Use *anova*() function to perform \[x^2\] test for model selection. Did adding the quadratic term improve the model?
+
+**Results:** Here we used the *anova*() function to perform \[x^2\] testing for selecting the superior model. In this example, our hypotheses are as follows:
+\[H_0:\]*The models are equally effective in explaining the number of AIDS cases*
+\[H_a:\]*The models are not equally effective in explaining the number of AIDS cases*
+
+Based on the ANOVA table below, we can state that we have evidence to reject the *Null hypothesis*, due to the p-value of less that 0.001 and the difference in Residual Deviation.
+
+```{r}
+# use anova function to compare both models
+anova(aids.poisson, aids.quad, test = "Chisq")
+```
+
+
+**Problem #3, Part A:** Load **Default** dataset from **ISLR** library. The dataset contains information on ten thousand customers. The aim here is to predict which customers will default on their credit card debt. It is a 4 dimensional dataset with 10,000 observations. You had developed a logistic regression model on HW #2. Now consider the following two models:
+Model1 -> Default = Student + Balance
+Model2 -> Default = Balance
+
+With the whole data compare the two models (Use AIC and/or error rate)
+
+**Results:** First, I obtained the AIC values from both *Model1* and *Model2*. As we can see in Figure 3.1, the AIC for *Model1* is slightly lower than the AIC for *Model2*. This indicates that *Model1* is the superior model from these two models.
+
+To confirm, I calculated the actual error rate of the predictions compared to the Default data set. Confusion matrices were done to show the accuracy differences for *Model1* and *Model2*. Figure 3.2 summarizes this accuracy comparison.
+
+Finally, Figure 3.3 shows a comparison of the Mean Square Error for these two models. Again, we see that *Model1* is superior to *Model2*.
+
+For all three measures, *Model1*, which includes both 'Student' and 'Balance' as treatment variables, is slightly better at explaining the data than *Model2*, which only includes 'Balance' as a treatment variable. *This shows that the inclusion of 'Student' improves the model's predictability.*
+
+```{r}
+# load Default dataset
+data("Default", package = "ISLR")
+
+# fit both models per instructions
+model1 <- glm(default ~ student + balance, data = Default, family = binomial())
+model2 <- glm(default ~ balance, data = Default, family = binomial())
+
+# used each fitted model to predict default from 'Default' table
+model1.probs <- predict(model1, type = 'response') * 100
+model1.predict <- as.factor(ifelse(model1.probs > 50, "Yes", "No"))
+model2.probs <- predict(model2, type = 'response') * 100
+model2.predict <- as.factor(ifelse(model2.probs > 50, "Yes", "No"))
+ 
+# added the results of the two predict functions to the 'Default' dataframe
+Default <- data.frame(cbind(Default, model1.predict))
+Default <- data.frame(cbind(Default, model2.predict))
+
+# printed confusion matrices comparing two models
+ConfusionMatrix1 <- table(Default$default, Default$model1.predict)
+names(dimnames(ConfusionMatrix1)) <- c("Model1.Predict", "Observed")
+ConfusionMatrix2 <- table(Default$default, Default$model2.predict)
+names(dimnames(ConfusionMatrix2)) <- c("Model2.Predict", "Observed")
+
+# calculated and printed error rates
+model1.error <- (1 - ((ConfusionMatrix1[1,1] + ConfusionMatrix1[2,2]) /
+  sum(nrow(Default)))) * 100
+model2.error <- (1 - ((ConfusionMatrix2[1,1] + ConfusionMatrix2[2,2]) /
+  sum(nrow(Default)))) * 100
+
+# calculated Mean Square Errors
+Default$default <- ifelse(Default$default == "Yes", 1, 0)
+MSE3a1 <- mean((predict(model1, Default, 
+                        type = 'response')-Default$default)^2)
+MSE3a2 <- mean((predict(model2, Default, 
+                        type = 'response')-Default$default)^2)
+
+# kabel summary of AIC comparison
+kable(cbind(model1$aic, model2$aic), row.names = FALSE,
+      col.names = c("Model1 AIC", 
+                    "Model2 AIC"),
+      caption = "Figure 3.1: Comparison of AIC Models")
+
+# kabel summary of error rate comparison
+kable(cbind(model1.error, model2.error), row.names = FALSE,
+      col.names = c("Model1 Error Rate (%)", "Model2 Error Rate (%)"),
+      caption = "Figure 3.2: Comparison of Error Rates")
+
+# kabel summary of Mean Square Error 
+kable(cbind(MSE3a1, MSE3a2), row.names = FALSE,
+      col.names = c("Model1 MSE", "Model2 MSE"),
+      caption = "Figure 3.3: Comparison of Mean Square Error")
+```
+
+
+**Problem #3, Part B:** Use validation set approach and choose the best model. Be aware that we have few people who defaulted in the data.
+
+**Results:** Figure 3.4 shows the comparison between AIC for *Model1* and *Model2* using the validation set approach. In this approach, we randomly split the original data set into 'train' and 'test' subsets. In doing so, the 'test' data does not bias the model since only the training data is used in fitting the model. 75% of the original 'Default' data set are included in the 'train' data set and the remaining 25% in the 'test' data set.
+
+Figure 3.5 shows the comparison between Mean Square Error(MSE) for the two models.
+
+With this approach, similar to *Part A*, *Model1* measures slightly better in both AIC and MSE. From this we deduce that *Model1*, which includes the 'balance' and 'student' variables as independent variables, is slightly superior to *Model2* which only has one independent variable - 'balance'. Again, we receive evidence that the inclusion of 'student' improves the model accuracy.
+
+```{r}
+# create training and testing sets
+sample <- 0.75 * nrow(Default)
+set.seed(621)
+train_indices <- sample(seq_len(nrow(Default)), size = sample)
+train3 <- Default[train_indices,]
+test3 <- Default[-train_indices,]
+
+# fit models with train data set
+model1.3b <- glm(default ~ student + balance, data = train3, family = binomial())
+model2.3b <- glm(default ~ balance, data = train3, family = binomial())
+
+# calculated Mean Square Errors
+MSE3b1 <- mean((predict(model1.3b, test3, 
+                        type = 'response')-test3$default)^2)
+MSE3b2 <- mean((predict(model2.3b, test3, 
+                        type = 'response')-test3$default)^2)
+
+# kabel summary of AIC comparison
+kable(cbind(model1.3b$aic, model2.3b$aic), row.names = FALSE,
+      col.names = c("Model1 AIC", 
+                    "Model2 AIC"),
+      caption = "Figure 3.4: Comparison of AIC Models")
+
+# kabel summary of Mean Square Error 
+kable(cbind(MSE3b1, MSE3b2), row.names = FALSE,
+      col.names = c("Model1 MSE", "Model2 MSE"),
+      caption = "Figure 3.5: Comparison of Mean Square Error (Validation Set Approach)")
+
+# used each fitted model to predict default from 'Default' table
+model1.3b.probs <- predict(model1.3b, newdata = test3, type = 'response') * 100
+model1.3b.predict <- as.factor(ifelse(model1.3b.probs > 50, 1, 0))
+model2.3b.probs <- predict(model2.3b, newdata = test3, type = 'response') * 100
+model2.3b.predict <- as.factor(ifelse(model2.3b.probs > 50, 1, 0))
+# added the results of the two predict functions to the 'Default' dataframe
+test3 <- data.frame(cbind(test3, model1.3b.predict))
+test3 <- data.frame(cbind(test3, model2.3b.predict))
+# printed confusion matrices comparing two models
+ConfusionMatrix13b <- table(test3$default, test3$model1.3b.predict)
+ConfusionMatrix23b <- table(test3$default, test3$model2.3b.predict)
+# calculated and printed error rates
+model13b.error <- (1 - ((ConfusionMatrix13b[1,1] + ConfusionMatrix13b[2,2]) /
+  sum(nrow(test3)))) * 100
+model23b.error <- (1 - ((ConfusionMatrix23b[1,1] + ConfusionMatrix23b[2,2]) /
+  sum(nrow(test3)))) * 100
+```
+
+
+**Problem #3, Part C:** Use LOOCV approach and choose the best model. 
+
+**Results:** For this problem, I created a for loop that iterates through the entire 'Default' data set leaving out one observation as the 'test' data set in each iteration. The loop calculates the MSE at each iteration. Figure 3.6 shows the MSE for both models for comparison.
+
+Again we can see that *Model1* has a lower MSE, using this approach, than that of *Model2*. From this, we conclude that *Model1* is better than *Model2* and the inclusion of the 'student' variable as a treatment improves the model. 
+
+```{r}
+matrix1 <- matrix(nrow = nrow(Default), ncol = 1)
+matrix2 <- matrix(nrow = nrow(Default), ncol = 1)
+
+for (i in 1:nrow(Default)) {
+  train.1 <- Default[-i, ]
+  test.1 <- Default[i, ]
+  model1.3c <- glm(default ~ student + balance, data = train.1,
+                   family = 'binomial')
+  model2.3c <- glm(default ~ student, data = train.1,
+                   family = 'binomial')
+  MSE1.3c <- mean((predict(model1.3c, test.1,
+                           type = 'response')-test.1$default)^2)
+  MSE2.3c <- mean((predict(model2.3c, test.1,
+                           type = 'response')-test.1$default)^2)
+  matrix1[i, ] = MSE1.3c
+  matrix2[i, ] = MSE2.3c
+}
+MSE1.3c <- mean(matrix1)
+MSE2.3c <- mean(matrix2)
+
+kable(cbind(MSE1.3c, MSE2.3c), row.names = FALSE,
+      col.names = c("Model1 MSE", "Model2 MSE"),
+      caption = "Figure 3.6: Comparison of Mean Square Error (LOOCV)")
+```
+
+
+**Problem #3, Part D:** Use 10-fold cross-validation approach and choose the best model.
+
+**Results:** Again, *Model1* emerges as the best model due to having a slightly smaller Mean Standard Error than *Model2*. Thus we can conclude that the inclusion of the treatment variable 'student' in the model improves it's accuracy compared to *Model2* which excludes this treatment variable.
+
+```{r}
+#cost function - defines our threshold
+cost <- function(r, pi = 0)
+  mean(abs(r-pi) > 0.5)
+
+# fit the models using cv.glm() from the 'boot' library
+model1.3d <- cv.glm(test3, model1.3b, K = 10,
+                    cost)$delta[1]
+model2.3d <- cv.glm(test3, model2.3b, K = 10,
+                    cost)$delta[1]
+
+# kabel summary of Mean Square Error 
+kable(cbind(model1.3d, model2.3d), row.names = FALSE,
+      col.names = c("Model1 MSE", "Model2 MSE"),
+      caption = "Figure 3.7: Comparison of Mean Square Error (10-fold CV)")
+```
+
+**Problem #3 Summary:** Figure 3.8 provides a visual depiction of these MSE values from each approach. As we can see, *Model1* has a lower MSE regardless of the comparison approach taken. 
+*There is not an analogous Base R plot for Figure 3.8 because Problem 3 does not require any plots.* 
+
+```{r}
+# create data frame of different MSE for plot comparison
+b.comp <- cbind(MSE3b1, MSE3b2)
+colnames(b.comp) <- c("Model 1 MSE", "Model 2 MSE")
+rownames(b.comp) <- "Validation Set"
+c.comp <- cbind(MSE1.3c, MSE2.3c)
+colnames(c.comp) <- c("Model 1 MSE", "Model 2 MSE")
+rownames(c.comp) <- "LOOCV"
+d.comp <- cbind(model1.3d, model2.3d)
+colnames(d.comp) <- c("Model 1 MSE", "Model 2 MSE")
+rownames(d.comp) <- "10-Fold CV"
+comparison.3 <- as.data.frame(rbind(b.comp, c.comp, d.comp))
+comparison.3 <- add_rownames(comparison.3, "Approach")
+comparison.3.long <- melt(comparison.3, id.vars = "Approach")
+
+# ggplot comparison of MSE by model and approach
+ggplot(comparison.3.long, aes(x = Approach, y = value, fill = variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_fill_manual("legend", values = c("orange", "green")) +
+  labs(x = "Approach", y = "MSE Values", 
+       title = "Model 1 & Model 2 MSE Comparison by Approach",
+       subtitle = "Figure 3.8") +
+  guides(fill = guide_legend(title = "Model"))
+```
+
+**Problem #3 Summary, cont'd:** Here I have the misclassification rate summaries from Part B, C, and D of Exercise 3 in Figures 3.10, 3.11, and 3.12 respectively. We can conclude that, regardless of the modeling approach, *Model1* is better at predicting 'default' than *Model2*. Therefore, the addition of the 'student' independent variable to the model does improve its performance. 
+
+```{r}
+# kabel summary of Error Rates 
+kable(cbind(model13b.error, model23b.error), row.names = FALSE,
+      col.names = c("Model1 Error Rate", "Model2 Error Rate"),
+      caption = "Figure 3.10: Comparison of Error Rate(Validation Set)")
+kable(cbind(round(MSE1.3c*100,2), round(MSE2.3c*100,2)), row.names = FALSE,
+      col.names = c("Model1 Error Rate", "Model2 Error Rate"),
+      caption = "Figure 3.11: Comparison of Error Rate(LOOCV)")
+kable(cbind(model1.3d*100, model2.3d*100), row.names = FALSE,
+      col.names = c("Model1 Error Rate", "Model2 Error Rate"),
+      caption = "Figure 3.12: Comparison of Error Rate(10-fold CV)")
+```
+
+
+**Problem #4:** In the **ISLR** library, load the **Smarket** dataset. This contains Daily percentage returns for the S&P 500 stock index between 2001 and 2005. There are 1250 observations and 9 variables. The variable of interest is Direction which is a factor of levels Down and Up indicating whether the market had a positive or negative return on a given day. Since the goal is to predict the direction of the stock market in the future, here it would make sense to use the data from years 2001 - 2004 as training and 2005 as validation. According to this, create a training set and testing set. Perform logistic regression and assess the error rate. 
+
+**Results:** First I split the data into *train* and *test* data sets. I then created two logistic regression models (*model.1* and *model.2*) using the *train* data set. For *model.1*, I used the 5 'Lag' variables and the 'Volume' variable as my treatment variables. For *model.2*, I removed 'Volume' as a treatment variable.
+
+```{r}
+data("Smarket", package = "ISLR")
+
+Smarket$Direction <- ifelse(Smarket$Direction == "Up", 1, 0)
+# split into test and train data based on exercise instructions
+test4 <- subset(Smarket, Smarket$Year == 2005)
+train4 <- subset(Smarket, Smarket$Year < 2005)
+
+# build models for comparison
+model.1 <- glm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 +
+                 Volume, data = train4, family = binomial())
+model.2 <- glm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5,
+               data = train4, family = binomial())
+```
+
+
+Using the *validation set approach*, we see that **model.2** has a smaller Mean Square Error than **model.1**, the model that includes the 'Volume' treatment variable. This means that, using this method, **model.2** is better at predicting the outcomes in the *test* data set than **model.1**.
+
+```{r}
+# calculated Mean Square Errors
+MSE.1 <- mean((predict(model.1, test4, 
+                        type = 'response')-test4$Direction)^2)
+MSE.2 <- mean((predict(model.2, test4, 
+                        type = 'response')-test4$Direction)^2)
+
+# kable summary of MSE of 2 models
+kable(cbind(MSE.1, MSE.2), row.names = FALSE,
+      col.names = c("Model.1 MSE", "Model.2 MSE"),
+      caption = "Figure 4.1: Comparison of Mean Square Error(Validation Set Approach)")
+```
+
+
+**Results:** To further compare the 2 models, I have also included *Figure 4.2* which compares the AIC values of the models. Here we see that *model.2* has a smaller AIC indicating that it is superior. Because the difference is so small, I also want to check the actual error rate of each model before determining which is the better model.
+
+*Figure 4.4* shows the actual error rate for both *model.1* and *model.2*. As we can see, *model.2* was more accurate in predicting the market direction in the 'test' data set. Therefore, we can say that the model improved by removing the 'Volume' treatment variable.
+
+```{r}
+# kabel summary of AIC
+kable(cbind(model.1$aic, model.2$aic), row.names = FALSE,
+      col.names = c("Model.1 AIC", "Model.2 AIC"),
+      caption = "Figure 4.3: Comparison of AIC")
+
+test4$Direction <- as.factor(test4$Direction)
+# used each fitted model to predict market movement from 'test4' table
+model.1.probs <- predict(model.1, newdata = test4, type = 'response') * 100
+model.1.predict <- as.factor(ifelse(model.1.probs > 50, 1, 0))
+model.2.probs <- predict(model.2, newdata = test4, type = 'response') * 100
+model.2.predict <- as.factor(ifelse(model.2.probs > 50, 1, 0))
+ 
+# added the results of the two predict functions to the 'test4' dataframe
+test4 <- data.frame(cbind(test4, model.1.predict))
+test4 <- data.frame(cbind(test4, model.2.predict))
+
+# created confusion matrices of each of the two models
+ConfusionMatrix.1 <- table(test4$Direction, test4$model.1.predict)
+names(dimnames(ConfusionMatrix.1)) <- c("Model.1 Predict", "Observed")
+ConfusionMatrix.2 <- table(test4$Direction, test4$model.2.predict)
+names(dimnames(ConfusionMatrix.2)) <- c("Model.2 Predict", "Observed")
+
+# calculated error rates
+model.1.error <- (1 - ((ConfusionMatrix.1[1,1] + ConfusionMatrix.1[2,2]) /
+  sum(nrow(test4)))) * 100
+model.2.error <- (1 - ((ConfusionMatrix.2[1,1] + ConfusionMatrix.2[2,2]) /
+  sum(nrow(test4)))) * 100
+
+kable(cbind(model.1.error, model.2.error), row.names = FALSE,
+      col.names = c("Model.1 Error Rate(%)", "Model.2 Error Rate(%)"),
+      caption = "Figure 4.4: Comparison of Error Rate")
+```

@@ -1,0 +1,242 @@
+---
+title: "Homework #11"
+author: "Justin Robinette"
+date: "November 13, 2018"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+*No collaborators for any problem*
+
+```{r}
+#install.packages("coin")
+#install.packages("sandwich")
+library(HSAUR3)         #clouds dataset
+library(coin)           #alpha dataset
+library(multcomp)       #glht function
+library(sandwich)       #sandwich covariance matrix estimators
+library(lme4)           #lmer
+library(stats)          #statistics functions
+library(knitr)          #kable
+library(data.table)     #data manipulation
+library(ggplot2)        #visualization
+```
+
+**Problem #1:** Consider the **alpha** dataset from the **coin** package. Compare the results when using **glht** and TukeyHSD (Refer to Chapter 5 review for TukeyHSD).
+
+**Results:** Using both **glht** and **TukeyHSD**, we can compare the confidence intervals and significance of difference in allele length from the *alpha* dataset.
+
+First, similarly to the lecture, we inspect the data to see the differences in the Expression Level by the allele length. This is shown by **Figure 1.1** below. 
+
+Next I used the Generalized Linear Hypothesis functionality from the **multcomp** library to get the confidence intervals and p-values of difference in allele length. **Figure 1.2** shows the confidence intervals by allele length. From this plot, we see very minimal difference between long and intermediate and short and intermediate alleles. We do see a marginal difference between long and short alleles from the plot.  
+This difference can be further examined by **Figure 1.3** which shows that the p-value for the difference between long and short is statistically significant at a higher alpha of 0.1, but not at the alpha of 0.05.
+
+For comparison, I used **TukeyHSD** to examine the effect that allele length has on the expression level. **Figure 1.4** shows a similar confidence interval plot to **Figure 1.2** where we see very little difference between the intermediate group and the other two groups when using TukeyHSD. **Figure 1.5** shows us that the p-value of the difference between the long allele group and the short allele group is again not statistically significant at an alpha of 0.05, but it is significant at an alpha of 0.1. 
+
+I see no real difference in the results of the two methods. Both show a marginally significant effect between long and short alleles on the expression level. 
+
+*Only base R plots as plots were not requested by the exercise.*
+
+```{r}
+data("alpha", package = "coin")
+
+# tapply(alpha$elevel, alpha$alength, mean)
+# tapply(alpha$elevel, alpha$alength, sd)
+
+# inspect data
+n <- table(alpha$alength)
+levels(alpha$alength) <- abbreviate(levels(alpha$alength))
+plot(elevel ~ alength, data = alpha, varwidth = TRUE, ylab = "Expression Level", 
+     xlab = "NACP-REP1 Allele Length", 
+     main = "Figure 1.1: Expression Level by Allele Length")
+
+# use glht 
+amod <- aov(elevel ~ alength, data = alpha)
+amod_glht <- glht(amod, linfct = mcp(alength = "Tukey"))
+plot(confint(amod_glht), xlim = c(-0.6, 2.6), ylim = c(0.5, 3.5),
+     main = "Figure 1.2: Generalized Linear Hypothesis CIs", xlab = "Difference")
+paste("Figure 1.3")
+summary(amod_glht)
+
+# use TukeyHSD 
+amod_hsd <- TukeyHSD(amod)
+paste("Figure 1.4")
+plot(amod_hsd)
+paste("Figure 1.5")
+amod_hsd
+```
+
+**Problem #2, Part A:** Consider the **clouds** data from the **HSAUR3** package.
+
+Read and write a report (no longer than one page) on the clouds data given in Chapter 15 section 15.3.3 from Handbook Ed 3.
+
+**Results:** The clouds data looks at weather modification (cloud seeding), in conjuction with other contributory factors, and the corresponding effect on rainfall. This dataset, from 1975, contains a small number of observations - only 24 days. Because of this rather small sample size, we can examine the confidence band around an estimated regression line, with probability greater than or equal to \[1-\alpha\].
+
+Although it is easy to calculate the pointwise confidence intervals, we want to make sure that we control the type I error, or the rejection of a true Null Hypothesis. To do so, we can multiply the \[\beta_1sne_1\] values by a matrix **K**.
+
+We can write a function to get confidence intervals for all the parameters of interest to form a confidence band of the estimated regression line:
+
+```{r}
+data("clouds", package = "HSAUR3")
+```
+
+```{r, echo=TRUE}
+confband <- function(subset, main) {
+  mod <- lm(rainfall ~ sne, data = clouds, subset = subset)
+  sne_grid <- seq(from = 1.5, to = 4.5, by = 0.25)
+  K <- cbind(1, sne_grid)
+  sne_ci <- confint(glht(mod, linfct = K))
+  plot(rainfall ~ sne, data = clouds, subset = subset, 
+       xlab = "S-Ne Criterion", main = main, ylab = "Rainfall",
+       xlim = range(clouds$sne),
+       ylim = range(clouds$rainfall))
+  abline(mod)
+  lines(sne_grid, sne_ci$confint[,2], lty = 2)
+  lines(sne_grid, sne_ci$confint[,3], lty = 2)
+}
+```
+
+The above function, **confband** fits a linear model to a subset of the clouds dataset. Next, we can use this function to produce plots showing subsets of the data based on whether or not seeding action occurred.
+
+As we can see, there is larger variability observed when seeding did not occur than there is when seeding occurred.
+
+*Only base R plots as plots were not requested by the exercise.*
+
+```{r}
+layout(matrix(1:2, ncol = 2))
+confband(clouds$seeding == "no", main = "No Seeding")
+confband(clouds$seeding == "yes", main = "Seeding")
+```
+
+**Problem #2, Part B:** Consider the linear model fitted to the clouds data as summarized in Chapter 6, Figure 6.5. Set up a matrix K corresponding to the global null hypothesis that all interaction terms presented in the model are zero. Test both the global hypothesis and all hypotheses corresponding to each of the interaction terms.
+
+**Results:** First, I used the clouds_formula summarized in Chapter 6 to fit a linear model for the clouds dataset. Next, I set up a matrix K with all interaction terms equal to 0.
+
+I then used the **glht** function with 'linfct = K' to test both the global hypothesis and each hypothesis corresponding to the individual interaction terms.
+
+**Figure 2.1** shows the p-value for the global hypothesis test as significant at an alpha of 0.05. 
+
+**Figure 2.2** shows the p-values for each individual interaction term within the model, again leaving the terms set equal to zero. Here we see that most of the interaction terms are not significant. Seeding = yes interaction with 'sne' is marginally significant at an alpha of 0.1. 
+
+```{r}
+# create clouds_formula like ch.6
+clouds_formula <- rainfall ~ seeding + seeding:(sne + cloudcover + prewetness + 
+                                                  echomotion) + time
+
+# create model with cloud_formula
+clouds_lm <- lm(clouds_formula, data = clouds)
+lm_sum <- summary(clouds_lm)
+
+# define K matrix
+K <- diag(length(coef(clouds_lm)))[-1,]
+rownames(K) <- names(coef(clouds_lm))[-1]
+# fit glht model using K matrix
+clouds_glht <- glht(clouds_lm, linfct = K)
+
+# test global hypothesis with interaction terms == 0
+glht_f <- summary(clouds_glht, test = Ftest())
+kable(glht_f$test$pvalue, col.names = "Global Hypothesis Test P-Value",
+      caption = "Figure 2.1: P-Value of Model with All Interaction Terms = 0")
+
+# test all hypothesis using p-values of each interaction assuming == 0
+glht_sum <- summary(clouds_glht)
+glht_p <- as.data.frame(glht_sum$coef[-1])
+glht_p <- as.data.frame(row.names(glht_p))
+glht_p$attribute <- paste(glht_p$`row.names(glht_p)`,"== 0")
+glht_p$`row.names(glht_p)` <- NULL
+glht_p <- as.data.frame(cbind(glht_p, glht_sum$test$pvalues[1:10]))
+colnames(glht_p)[2] <- "pvalue"
+kable(glht_p, caption = "Figure 2.2: P-Value Corresponding to Each Interaction Term = 0")
+```
+
+**Problem #2, Part C:** How does adjustment for multiple testing change which interactions are significant?
+
+**Results:** **Figure 2.3** shows the p-values for the attributes with the interactions without adjusting for multiple testing. Here we see that two attributes, from the formula provided in Chapter 6 (per the instructions), are significant at an alpha of 0.05 - denoted by the blue circle. 
+
+**Figure 2.4** shows the p-values for the attributes with the interaction terms after adjusting for multiple testing. Here we see that there is only one significant term from the formula provided in Chapter 6. Additionally we see that every point appears to have a larger p-value than it did in the model provided in Chapter 6.
+
+From these plots, we can deduce that adjusting for multiple testing lessens the significance of the attributes. 
+
+*No base R plots provided since the question does not ask for plotting.*
+
+```{r}
+# create dataframe of p-values from linear model for comparison
+lm_p <- as.data.frame(lm_sum$coefficients[,4])
+names <- rownames(lm_p)
+rownames(lm_p) <- NULL
+lm_p <- cbind(names, lm_p)
+colnames(lm_p) <- c("attribute", "pvalue")
+lm_p <- lm_p[-1,]
+lm_p$significant <- with(lm_p, ifelse(pvalue < 0.05, 1, 0))
+glht_p$significant <- with(glht_p, ifelse(pvalue < 0.05, 1, 0))
+
+ggplot(lm_p, aes(x = attribute, y = pvalue, color = factor(significant))) +
+  geom_point(size = 5) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        plot.title = element_text(hjust = 0.5)) +
+  scale_color_manual(labels = c("No", "Yes"), 
+                     values = c("red", "blue")) +
+  labs(x = "Interactions", y = "P-Values", color = "P < 0.05",
+       title = "Figure 2.3: P-Values without Multiple Testing")
+  
+ggplot(glht_p, aes(x = attribute, y = pvalue, color = factor(significant))) +
+  geom_point(size = 5) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        plot.title = element_text(hjust = 0.5)) +
+  scale_color_manual(labels = c("No", "Yes"), 
+                     values = c("red", "blue")) +
+  labs(x = "Interactions", y = "P-Values", color = "P < 0.05",
+       title = "Figure 2.4: P-Values with Multiple Testing")
+```
+
+**Problem #3:** For the logistic regression model presented in Chapter 7 in Figure 7.7, perform a multiplicity adjusted test on all regression coefficients (except for the intercept) being zero. Do the conclusions drawn in Chapter 7 remain valid?
+
+**Results:** First, I recreated the model from Figure 7.7, including the interaction between gender and education as a predictor of agree / disagree. Next I created a model with each coefficient being zero.
+
+My next step was to compare the p-values. The conclusion from Figure 7.7, per page 131 of the *Handbook* is that *"the **gender** and **education** interaction term is seen to be highly significant..."*. Examining this conclusion with the **glht** function, we can see from **Figure 3.1** that the p-values remain similar and statistically significant when the regression coefficients (except for the intercept) are zero. 
+
+In the glm model from Chapter 7, the interaction term was significant at a level of 0.01. In the glht model, that is used for comparison in this exercise, the p-value is slightly greater than 0.01. 
+
+Therefore, I conclude that the original conclusion from Chapter 7 remains valid at an alpha of 0.05 but would not be valid at a smaller alpha of 0.01. 
+
+```{r}
+data("womensrole", package = "HSAUR3")
+
+# recreate model from 7.7
+fm2 <- cbind(agree, disagree) ~ gender * education
+womensrole_glm_2 <- glm(fm2, data = womensrole, family = binomial())
+wr_glm_sum <- summary(womensrole_glm_2)
+
+# run test with coef == 0
+K <- diag(length(coef(womensrole_glm_2)))[-1,]
+rownames(K) <- names(coef(womensrole_glm_2))[-1]
+womensrole_ht <- glht(womensrole_glm_2, linfct = K)
+wr_ht_sum <- summary(womensrole_ht)
+
+# get p-vals from glht model
+wr_ht_p <- as.data.frame(wr_ht_sum$coef[-1])
+wr_ht_p <- as.data.frame(row.names(wr_ht_p))
+wr_ht_p$attribute <- paste(wr_ht_p$`row.names(wr_ht_p)`,'==0')
+wr_ht_p$`row.names(wr_ht_p)` <- NULL
+wr_ht_p <- as.data.frame(cbind(wr_ht_p, wr_ht_sum$test$pvalues[1:3]))
+colnames(wr_ht_p)[2] <- "p-value"
+
+# compare p-vals
+womensrole_df <- cbind(wr_glm_sum$coefficients[2:4,4], wr_ht_p)
+womensrole_df <- setDT(womensrole_df, keep.rownames = TRUE)[]
+colnames(womensrole_df) <- c("attributes", "glm p-values", "attributes", "ht p-values")
+kable(womensrole_df, row.names = FALSE, 
+      caption = "Figure 3.1: Comparison of P-Values by Model")
+
+```
+
+
+
+
+
+

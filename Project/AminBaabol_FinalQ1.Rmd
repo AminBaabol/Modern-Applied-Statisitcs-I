@@ -1,0 +1,413 @@
+---
+title: "Question 1"
+author: "Amin Baabol"
+date: "11/21/2020"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+#Introduction
+"Microtus Subterraneus" and "Microtus Multiplex" are by enlarge considered two 
+distinct species by biologists.However, it has not been easy to distinguish between
+the two species.Microtus, also known as Voles are small roden-like burrow animals 
+that are geographically spread out across western Asian, Europe and North America.
+Our interest lies in establishing a "best-fit" statistical and machine learning 
+model that will help biologists identity or distinguish between two Microtus species.
+The data consist of eight morphometric variables collected from fossilized bird pellets,
+using Nikon-scope with an accuracy of 1/1000 mm and a dial caliper with an accuracy 
+of 1/100 mm. There are 299 specimens of which only 89 specimens whose specie has been
+identified.Furthermore,research indicates that there is no reliable criteria based 
+on cranial morphology that can distinguish the two species.
+
+Our analysis process will use the 89 identified samples to construct a model that
+will classify the rest of the unclassified 199 specimens.It is important to note that
+while we strive to refine our analysis the small sample size provided can potentially
+reduced the likelihood of detecting a statistically significant result.
+
+
+#Methodology
+The dataset will be imported from the *Flurry* library as *microtus*. As stated
+in the introduction, only 89 samples have their specie classified as either
+"multiplex" or "subterranean" and the remaining 199 samples are unknown.It is 
+apparent that this is a classification problem with a binary outcome. There are 
+various machine learning models we can employ for the given classification problem,
+however,the problem statement specifically requires us to develop a classification
+model using a generalized-linear model family.Hence, we are going to develop a 
+logistic regression model using the *glm* function in base R.Also, it is a good 
+practice to employ various,competing models to refining our model and variables 
+selection process.Any figures referred to will be attached an an appendix at the
+end of report.
+
+#Logistic Regression
+An important concept to keep in regarding the coefficient estimates of logistic
+regression is the concept of log of "odds ratio".Unlike regular linear regression 
+models,logistic regression model predicts the probability of observing specie 
+"multiplex",conveniently coded as 1 and the probability of observing specie 
+"subterraneous" coded as 0.The probability of observing 1 over 0 also known as 
+odds ratio,is calculated as $P$/$1-P$.The logit link function will then take the 
+logarithm of the odds ratio and will increase with unrestricted range as the 
+$P$ increases from 0 to 1.
+
+
+## Assumptions
+The following assumptions are made in the process of a building binomial logistic 
+regression model:
+  1.Predicted outcome is binary or discrete 
+  2.The sample
+  2.Continuous explanatory variables follow normal Gaussian distribution
+  3.A linear relationship exists between the independent explanatory variables 
+    and the logit output
+  4.No outliers that exert undue influence on the model
+  5.No troublesome multicollinearity 
+  
+
+##Data Exploration
+We split our dataset into two subsets, the "known subset" will be used to train
+our models,which will then predict or classify the remaining "unknown subset".
+Highly correlated variables will be removed from selection in order to decrease 
+model complexity and to avoid multicollinearity and increasing standard error 
+of the coefficient estimates. To perform multicollinearity diagnostics, we will use
+*ggpairs* from *GGally* package to create a correlation matrix.eliminated.
+
+```{r}
+library(Flury)
+library(ggplot2)
+library(GGally)
+library(car)
+library(tidyverse)
+library(caret)
+library(boot)
+library(DataExplorer)
+library(gridExtra)
+library(reshape2)
+library(MASS)
+library(pROC)
+library("PerformanceAnalytics")
+data(microtus)
+
+#subsetting the data
+known.subset <- subset(microtus,
+                                 microtus$Group == "multiplex"|microtus$Group == "subterraneus")
+#test data
+unknown.subset <- microtus[90:288,] 
+
+```
+
+## Data Visualization
+The aim of the data visualization is to assess the univariate frequency distribution 
+of the variables to ensure the normal distribution assumption isn't violated.
+By observing the box-plots of the all the variables separated by specie interesting 
+differences in distributions emerge.First,the histograms plots shown in Figure 1a-h
+indicate relatively normal distribution of the variables for each specie with varying 
+degrees of skewness.In particular,Figure 1a and Figure 1b indicate that there are 
+very little overlap of the distributions of upper left molar 1 width (M1Left) and 
+uper left molar 2 (M2Left) of the two species. M1Left of subterraneus is narrower 
+distribution centered around 1700mm,while Multiplex's M1Left is more flatten with
+a mean of 2054mm. Figure 1c-1f shows the two species fairly overlap in the distributions 
+of M3Left,Foramen,Pbone,and Length.Lastly, Figures 1g-1h show a distinction in Height 
+and Rostrum distributions of the two species.By observing the box-plots of the all 
+the variables separated by specie interesting differences and outliers emerged.
+Moreover,the density plots show that the probability of observing subterraneus 
+left upper molar1 is significantly higher at around 1600mm-1800mm,whereas left 
+upper molar1 for multiplex is highest around 1900mm-2200mm.The other variables 
+show slight differences but nothing as different as "M1Left". This means we expect
+to see significant differences in M1Left mean for the two species.
+
+
+
+```{r}
+
+#histogram plots of all variables by group
+M1Left1 <- ggplot(known.subset, aes(M1Left , fill = Group)) +
+  geom_histogram(position = "identity", alpha = 0.4) +
+  ggtitle("Figure 1a: Width of upper left molar 1") +
+  xlab("M1Left1 (0.001mm)") + ylab("Frequency")
+M2Left1 <- ggplot(known.subset, aes(M2Left , fill = Group)) +
+  geom_histogram(position = "identity", alpha = 0.4) +
+  ggtitle("Figure 1b: Width of upper left molar 2") +
+  xlab("M2Left (0.001mm)") + ylab("Frequency")
+M3Left1 <- ggplot(known.subset, aes(M3Left , fill = Group)) +
+  geom_histogram(position = "identity", alpha = 0.4) +
+  ggtitle("Figure 1c: Width of upper left molar 3") +
+  xlab("M3Left (0.001mm)") + ylab("Frequency")
+Foramen1 <- ggplot(known.subset, aes(Foramen , fill = Group)) +
+  geom_histogram(position = "identity", alpha = 0.4) +
+  ggtitle("Figure 1d: Length of incisive foramen ") +
+  xlab("Foramen (0.001mm)") + ylab("Frequency")
+Pbone1 <- ggplot(known.subset, aes(Pbone , fill = Group)) +
+  geom_histogram(position = "identity", alpha = 0.4) +
+  ggtitle("Figure 1e: Length of palatal bone ") +
+  xlab("Pbone (0.001mm)") + ylab("Frequency")
+Length1 <- ggplot(known.subset, aes(Length , fill = Group)) +
+  geom_histogram(position = "identity", alpha = 0.4) +
+  ggtitle("Figure 1f: Condylo incisive length or skull length ") +
+  xlab("Length ((0.01mm))") + ylab("Frequency")
+Height1 <- ggplot(known.subset, aes(Height , fill = Group)) +
+  geom_histogram(position = "identity", alpha = 0.4) +
+  ggtitle("Figure 1g: Skull height above bullae ") +
+  xlab("Height (0.01mm)") + ylab("Frequency")
+Rostrum1 <- ggplot(known.subset, aes(Rostrum , fill = Group)) +
+  geom_histogram(position = "identity", alpha = 0.4) +
+  ggtitle("Figure 1h: Skull width across rostrum ") +
+  xlab("Rostrum ((0.01mm))") + ylab("Frequency")
+ 
+grid.arrange(M1Left1,M2Left1)
+grid.arrange(M3Left1,Foramen1)
+grid.arrange(Pbone1,Length1)
+grid.arrange(Height1,Rostrum1)
+
+
+#box plots of all variables by group
+M1Left2 <- ggplot(known.subset, aes(x = Group, y = M1Left, fill = Group)) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) +
+  ggtitle("Figure 2a: Width of upper left molar 1") +
+  ylab("M1Left1 (0.001mm)") 
+M2Left2 <- ggplot(known.subset, aes(x = Group, y = M2Left, fill = Group)) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) +
+  ggtitle("Figure 2b: Width of upper left molar 2") +
+  ylab("M2Left (0.001mm)") 
+M3Left2 <- ggplot(known.subset, aes(x = Group, y = M3Left, fill = Group)) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) +
+  ggtitle("Figure 2c: Width of upper left molar 3") +
+  ylab("M3Left (0.001mm)") 
+Foramen2 <- ggplot(known.subset, aes(x = Group, y = Foramen, fill = Group)) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) +
+  ggtitle("Figure 2d: Length of incisive foramen ") +
+  ylab("Foramen (0.001mm)")
+Pbone2 <- ggplot(known.subset, aes(x = Group, y = Pbone, fill = Group)) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) +
+  ggtitle("Figure 2e: Length of palatal bone ") +
+  ylab("Pbone (0.001mm)") 
+Length2 <- ggplot(known.subset, aes(x = Group, y = Length, fill = Group)) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) +
+  ggtitle("Figure 2f: Condylo incisive length or skull length ") +
+  ylab("Length (0.01mm)") 
+Height2 <- ggplot(known.subset, aes(x = Group, y = Height , fill = Group)) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) +
+  ggtitle("Figure 2g: Skull height above bullae ") +
+  ylab("Height (0.01mm)") 
+Rostrum2 <- ggplot(known.subset, aes(x = Group, y = Rostrum , fill = Group)) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) +
+  ggtitle("Figure 2h: Skull width across rostrum ") +
+  ylab("Rostrum (0.01mm)")
+
+grid.arrange(M1Left2,M2Left2)
+grid.arrange(M3Left2,Foramen2)
+grid.arrange(Pbone2,Length2)
+grid.arrange(Height2,Rostrum2)
+
+featurePlot(x = known.subset[, c("M1Left","M2Left","M3Left","Foramen",
+                                 "Pbone","Length","Rostrum")],
+            y = known.subset$Group,
+            plot = "Density", 
+            scales = list(x = list(relation = "free"), 
+                          y = list(relation = "free")),
+            adjust = 1.5, 
+            pch = "*", 
+            layout = c(2, 1), 
+            auto.key = list(columns = 2))
+```
+
+
+## Correlation Matrix
+In order to avoid over-fitting the logistic regression it is considered best 
+best practice to eliminate highly correlated explanatory variables. Doing so will
+also assist us in preventing the possible presence of multicollinearity in the model.
+The correlation plot suggests that almost all of our predictors have highly significant
+correlations.To remove the highly correlated variables an arbitrary cut-off value 
+of 75% was selected.This significantly reduced the predictor variables available
+for selection down to three(Figure 3):
+    1.M1Left - Width of upper left molar 1 (0.001mm)
+    2.Foramen - Length of incisive foramen (0.001mm)
+    3.Pbone - Length of palatal bone (0.001mm)
+
+    
+```{r}
+#Visualization of correlations
+set.seed(25)
+chart.Correlation(known.subset[,2:9],
+                  labels = TRUE,
+                  main = "Figure 4",
+                  histogram = TRUE, pch =19)
+
+```
+
+
+## Model Selection
+The initial model fitted is a logistic regression model to be used as a reference
+to compare to the subsequent fitted models. This baseline model contained only the
+constant intercept.A total of seven models were fitted with increasing parameters.
+Subsequently,a log-likelihood ratio test was performed to compare model fitness.
+This test calculates the probability of observing parameters that optimize the 
+coefficient estimates of the two compared models.In other words,it analyzes the
+log-likelihood of the two models compared and see if their difference is statistically 
+significant.If the difference is indeed significant,the more complex model is chosen.
+On the other hand,if the p-value is not significant at the 0.05 level then the 
+simpler model is selected.
+
+Hence,Model0 which only contained the intercept was compared with Model1 which
+has one parameter.The resulting p-value is 2e-16, so Model1 was selected.Next,Model1
+was compared to Model2 which has two parameters. The resulting p-value is 0.01098,
+which led us to select Model2 over Model1.Next,Model2 against Model3 and the p-value
+is 0.5769. The subsequent comparisons tests failed to reject the null hypothesis
+that the difference between the log-likelihood of the compared models is not 
+significant.Therefore, Model 2 was selected to move forward.Also, we could have 
+compared the means of the square residuals of the models and picked one with the 
+lowest MSE.
+
+
+```{r}
+set.seed(7841)
+#converting categorical into numeric binary
+known.subset$Group <- ifelse(known.subset$Group == "multiplex",1,0)
+known.subset
+#Model0 with only an intercept
+Model0 <- glm(Group ~ 1, data = known.subset, family = binomial(link = "logit"))
+Model1 <- glm(Group ~ M1Left, data = known.subset, family = binomial(link = "logit"))
+Model2 <- glm(Group ~ M1Left+Foramen,data = known.subset, family = binomial(link = "logit"))
+Model3 <- glm(Group ~ M1Left+Foramen+Pbone, data = known.subset, family = binomial(link = "logit"))
+Model4 <- glm(Group ~ M1Left+Foramen+Pbone+M3Left, data = known.subset, family = binomial(link = "logit"))
+Model5 <- glm(Group ~ M1Left+Foramen+Pbone+M3Left+Height,
+              data = known.subset, family = binomial(link = "logit"))
+Model6 <- glm(Group ~.,data = known.subset, family = binomial(link = "logit"))
+
+#Model0 vs Model1
+anova(Model0,Model1,test = 'LR')
+summary(Model2)
+#Model1 vs Model2
+anova(Model1,Model2,test = 'LR')
+#Model2 vs Model3
+anova(Model2,Model3,test = 'LR')
+#Model2 vs Model4
+anova(Model2,Model4,test = 'LR')
+#Model2 vs Model5
+anova(Model2,Model5,test = 'LR')
+#Model1 vs Model6
+anova(Model2,Model6,test = 'LR')
+#testing all models against each other
+anova(Model0,Model1,Model2,Model3,Model4,Model5,Model6,test = 'LR')
+```
+
+## Model 2
+Model2 which is fitted with only two predictors(M1Left,Foremen) shows in the
+model summary that the intercept, M1Left and Foremen are all highly significant 
+at the 0.05 level. The Null deviance is 123.279 with 88 degrees of freedom, while
+the residual deviance is 22.049 with 86 degrees of freedom.The residual deviance 
+indicates how well Model2 predicts with the included parameters.The AIC which
+penalizes for having more variables is very low at 29.738.The mean square of the
+model residuals is 3.679744, which very low. Finding the MSE of the model uses 
+the
+$$MSE = (1/n)*\sum_{i=1}^n (Observered-Predicted)^2$$
+
+Additionally, Cook's distance was computed to detect the presence of any highly 
+influential outliers.The threshold or the cutoff line for cook's distance is 0.02
+The observations [21,],[24,] were detected as outliers with mild influence having 
+only passed the conservative threshold of 0.02.Observation [3,] is seen as an 
+outlier with extreme influence having passed the both 0.02 and 1 thresholds. 
+However, it is not omitted from the training dataset due to the small sample 
+size we have.
+
+
+
+```{r}
+set.seed(1234)
+#find Cook's distance for each observation in the dataset
+
+Model2.CookD <- cooks.distance(Model2)
+mean(Model2.CookD)
+
+plot(Model2.CookD, pch = "+", cex = .9,
+     main = "Figure 5: Influencial Outliers")  
+abline(h = 4*mean(Model2.CookD, na.rm = TRUE), col = "darkgreen")  
+text(x= 1:length(Model2.CookD) + 1, y = Model2.CookD,
+     labels=ifelse(Model2.CookD > 4*mean(Model2.CookD, na.rm = TRUE),
+                   names(Model2.CookD),""), col= "darkred") 
+
+
+#model2 prediction
+Model2.Predict <- predict(Model2, newdata = known.subset, type = "response")
+
+#Model diagnostics
+#Model2 mean square error
+MSE2 <- mean((Model2.Predict-known.subset$Group)^2)
+100*MSE2
+
+```
+
+## Model Performance
+
+
+### Cross Validation
+Having a small training data set creates performance uncertainty in our model,
+therefore,it is very crucial to perform at least one method of re-sampling to
+properly validate our models. 
+Model statistics Summary Table:
+        |$Training MSE$|$CV MSE$|$AIC$ |$BIC$|$Complexity$
+--------|--------------|--------|------|-----|---------------
+$Model2$| 3.68%        | 4.71%  |28.04 |35.51|2 predictors
+
+
+```{r}
+set.seed(8745)
+
+#10 fold cross validation
+Model2.MSE.cv10 <- mean(cv.glm(known.subset,Model2, K = 10)$delta)
+
+100*Model2.MSE.cv10
+
+AIC(Model2)
+BIC(Model2)
+
+```
+
+
+
+
+##Prediction
+Predicting the remaining unclassified 199 specimens.
+
+```{r}
+set.seed(7484)
+
+predict.199 <- predict(Model2, newdata = unknown.subset,type = "response")
+summary(predict.199)
+Classified_Samples <- ifelse(predict.199 > 0.55,"multiplex","subterraneous")
+
+
+table(Classified_Samples)
+Classified_Samples <- data.frame(Classified_Samples)
+
+
+#exporting the results as csv file
+write.csv(Classified_Samples,
+          "//Users/aminbaabol/Desktop/GradSchool/STATS-601\ Statistical\ Programming/Project/\\Classified.csv",
+          row.names = TRUE)
+
+```
+
+#Conclusion
+We began our analysis by assessing the descriptive statistics of the microtus data.
+The distribution of the boxplots of the predictor variables suggested that several 
+of the eight explanatory variables contain outliers and the correlation plot also 
+indicated many of these variables are highly correlated. We fitted seven models
+and performed log-likelihood ratio tests using anova.This method was intended to 
+isolate the important explanatory variables and reduce the model complexity without
+compromising its performance.The second model with only two predictors was deemed 
+"best" because we failed to reject the null hypothesis that the less complex model 
+is a better fit than the more complex model.This model reduced the residual deviance 
+from 28.5 to 22. The mean square error for the selected model was 3.68%.To verify 
+that no outliers were exerting undue influence on the model's performance Cook's
+distance,however, no observation was ultimately removed.Lastly,a 10 folk cross-validation 
+was used to ensure the model wasn't simply too overly-optimistic.The cross validation
+mean square error was slightly higher at 4.71%, it was none the less, a within 5% error
+margin.While every effort was made to ensure the quality of this analysis,however,
+I recommend collecting more samples because the coefficient estimates are small. This
+means the log-odds of correctly classifying the default specie (1) is lower.
+
+
+

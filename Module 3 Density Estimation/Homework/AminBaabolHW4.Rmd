@@ -1,0 +1,430 @@
+---
+title: "Homework 4"
+author: "Amin Baabol"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+## Instructions
+
+Answer all questions stated in each problem. Discuss how your results address each question.
+
+Submit your answers as a pdf, typeset (knitted) from an Rmd file. Include the Rmd file in your submission. You can typeset directly to PDF or typeset to Word then save to PDF In either case, both Rmd and PDF are required. If you are having trouble with .rmd, let us know and we will help you. If you knit to Word, check for any LaTeX commands that will not be compatible with Word.
+
+This file can be used as a template for your submission. Please follow the instructions found under "Content/Begin Here" titled **Homework Formatting**. No code should be included in your PDF submission unless explicitly requested. Use the `echo = F` flag to exclude code from the typeset document.
+
+For any question requiring a plot or graph, answer the question first using standard R graphics (See ?graphics). Then provide a equivalent answer using `library(ggplot2)` functions and syntax. You are not required to produce duplicate plots in answers to questions that do not explicitly require graphs, but it is encouraged. 
+
+You can remove the `Instructions` section from your submission.
+
+## Exercises
+
+### Warning: There are only three questions, however they will require more time coding. You may need to review function calling conventions and whether the optional arguments and their default parameters are appropriate.
+
+1. (Ex. 8.1 in HSAUR, modified for clarity) The \textbf{galaxies} data from \textbf{MASS} contains the velocities of 82 galaxies from six well-separated conic sections of space (Postman et al., 1986, Roeder, 1990). The data are intended to shed light on whether or not the observable universe contains superclusters of galaxies surrounded by large voids. The evidence for the existence of superclusters would be the multimodality of the distribution of velocities.(8.1 Handbook)
+
+a) Construct histograms using the following functions: 
+    
+        -hist() and ggplot()+geom_histogram()
+      
+        -truehist() and ggplot+geom_histogram() (make sure that the histograms show proportions, not counts.)
+      
+        -qplot()
+        
+    Comment on the shape and properties of the variable based on the five plots. Do you notice any sets of observations clustering? (Hint: You can adjust bin number or bin size as you try to determine the properties of the variable, but use the same bin settings between plots in your final analysis. You can also overlay the density function or use the rug command.)
+    
+
+```{r}
+#loading necessary libraries
+library(MASS)
+data(galaxies, package = "MASS")
+library(ggplot2)
+
+galaxies[78]
+galaxies[78] <- 26960
+
+#quick peak at the data
+#head(galaxies)
+#help("galaxies")
+#galaxies[78]
+galaxies[78] <- 26960
+
+#Creating a dataframe from the galaxies dataset
+galaxy.velocity <- galaxies[1:length(galaxies)]
+
+#Figure: 1a.1-Histogram
+#Rstudio histogram of the galaxies dataset
+hist(galaxy.velocity,
+     xlab = 'Velocity',
+     main = 'Galaxies Velocity Histogram :Base R',
+     ylab = 'Frequency',
+     col = "navyblue",freq = TRUE)
+#ggplot histogram of the dataset
+ggplot() + aes(galaxy.velocity,fill = I("navyblue"), color = I("black")) +
+  geom_histogram(binwidth = 5000, breaks = c(seq(5000, 35000, 5000))) +
+  labs(title = 'Galaxies Velocity Histogram :ggplot', x= 'Velocity', y = 'Frequency')
+
+#Figure:1a.2-True Histrogram of the galaxies dataset
+#Rstudio true histogram of the galaxies dataset
+truehist(galaxy.velocity,
+         xlab = 'Velocity',
+         main = 'Galaxies Velocity True Histogram :Base R',
+         ylab = 'Density',
+         col = "darkgreen")
+#ggplot true histogram of the galaxies dataset
+ggplot(as.data.frame(galaxy.velocity), aes(x = galaxy.velocity, fill = I("darkgreen"), color = I("black"))) +
+  geom_histogram(bins = 6, breaks=seq(5000, 35000, by=5000),aes(y = ..density..)) +
+  labs(title="Galaxies Velocity True Histogram :ggplot",x = "Velocity", y = "Density")
+
+
+#Figure:1a.3 - qplot
+qplot(galaxy.velocity, xlab = 'Velocity', ylab = 'Frequency', 
+      main = 'Galaxies Velocity Histogram :qplot', 
+      fill = I("darkred"), color = I("black"))
+
+
+```
+Discussion
+
+part 1a:
+There's a typo in the original galaxies dataset in the 78th observation 26690 which should be 26960 according to R, we corrected it.
+Histograms in figure1a.1 indicate that there is a normal distribution clustered around around 20,000 with frequency count as the y-axis.True histogram in figure 1a.2 reveals the same normal distribution seen in the regular histogram in figure 1a.1. It's however, important to note that the true histrogram function uses density values which is probability as its y-axis.Qplot in figure1a.3 reveals that the distribution isn't exactly normal like we initially assumed, there is one main cluster in and around 20,00 and there are also three smaller clusters which suggests multimodal distribution with four clusters.
+
+
+b) Create a new variable \textit{loggalaxies} = $\log$(galaxies). Repeat part a) using the `loggalaxies` variable. Does this affect your interpretation of the graphs?
+    
+```{r}
+#creating a new log variable 
+galaxies.data <- as.data.frame(galaxies)
+colnames(galaxies.data) <- "Velocity"
+galaxies.data$loggalaxies <- log(galaxies.data$Velocity)
+
+
+#Figure: 1b.1-Histograms
+#Rstudio histogram of the log(galaxies) dataset
+hist(galaxies.data$loggalaxies,
+     xlab = 'Velocity',
+     main = 'Galaxies Log(Velocity) Histogram :Base R',
+     ylab = 'Frequency',
+     col = "lightblue",freq = TRUE)
+#ggplot histogram of the dataset
+ggplot(galaxies.data, aes(x = loggalaxies, fill = I("lightblue"),color = I("black"))) +
+       geom_histogram(bins = 7) +
+       labs(x = "Log(Velocity)", y = "Frequency",
+       title = "Galaxies Log(Velocity) Histogram :ggplot")
+
+#Figure:1b.2-True Histrograms
+#Rstudio true histogram of the log(galaxies) dataset
+truehist(galaxies.data$loggalaxies,
+         xlab = 'Velocity',
+         main = 'Galaxies Log(Velocity) True Histogram :Base R',
+         ylab = 'Density',
+         col = "lightgreen")
+#ggplot true histogram of the log(galaxies) dataset
+ ggplot(galaxies.data, aes(x = loggalaxies, fill = I("lightblue"),color = I("black"))) +
+        geom_histogram(bins = 7, aes(y = ..density..)) +
+        labs(x = "Log(Velocity)", y = "Density",
+        title = "Galaxies Log(Velocity) Histogram :ggplot") 
+
+#Figure:1b.3 - qplot
+qplot(galaxies.data$loggalaxies, xlab = 'Velocity', ylab = 'Frequency', 
+      main = 'Galaxies Log(Velocity) Histogram :qplot', 
+      fill = I("red"), color = I("black"))
+
+```
+Discussion
+
+Part 1b:
+
+In figure 1b.1 we see normal distribution of the log velocity centered around 10 with negative skewness. Similarly, we also find normal distribution in the true histograms with 7 bins for both the base r and ggplots with true the true histograms still maintaining density y-axis. Figure 1b.3 which utilized the qplot function appears to have 3 clusters which suggests a normal distribution. 
+
+
+
+    
+c) Construct kernel density estimates using two different choices of kernel functions and three choices of bandwidth (one that is too large and “oversmooths,” one that is too small and “undersmooths,” and one that appears appropriate.) Therefore you should have six different kernel density estimates plots (you may combine plots when appropriate to reduce the number of plots made). Discuss your results. You can use the log scale or original scale for the variable, and specify in the plot x-axis which you choose.
+
+```{r}
+# Gaussian and Rectangular methods in base R: 
+under.gaussian.R <- density(galaxies.data$loggalaxies, bw = bw.nrd0(galaxies.data$loggalaxies)/2,
+          kernel = "gaussian")
+under.rectangular.R <- density(galaxies.data$loggalaxies, bw = bw.nrd0(galaxies.data$loggalaxies)/2,
+          kernel = "rectangular")
+appro.gaussian.R <- density(galaxies.data$loggalaxies, bw = bw.nrd0(galaxies.data$loggalaxies), 
+          kernel = "gaussian")
+appro.rectangular.R <- density(galaxies.data$loggalaxies, bw = bw.nrd0(galaxies.data$loggalaxies),
+          kernel = "rectangular")
+over.gaussian.R <- density(galaxies.data$loggalaxies, bw = bw.nrd0(galaxies.data$loggalaxies)*4,
+          kernel = "gaussian")
+over.rectangular.R <-density(galaxies.data$loggalaxies, bw = bw.nrd0(galaxies.data$loggalaxies)*4,
+          kernel = "rectangular")
+
+#Rstudio: Plotting 6 different kernel density estimates in base R
+par(mfrow = c(1,2))
+plot(under.gaussian.R, xlab = 'Log(Velocity)',
+        ylab = 'Density', 
+        main = 'Gaussian Undersmooth',
+        col = "blue",
+        type = "l")
+plot(under.rectangular.R, xlab = 'Log(Velocity)',
+        ylab = 'Density', 
+        main = 'Rectangular Undersmooth',
+        col = "blue",
+        type = "l")
+par(mfrow = c(1,2))
+plot(appro.rectangular.R, xlab = 'Log(Velocity)',
+        ylab = 'Density', 
+        main = 'Gaussian Appropriate',
+        col = "darkgreen",
+        type = "l")
+plot(appro.rectangular.R, xlab = 'Log(Velocity)',
+        ylab = 'Density', 
+        main = 'Rectangular Appropriate',
+        col = "darkgreen",
+        type = "l")
+par(mfrow = c(1,2))
+plot(over.gaussian.R, xlab = 'Log(Velocity)',
+        ylab = 'Density', 
+        main = 'Gaussian Oversmooth ',
+        col = "red",
+        type = "l")
+plot(over.rectangular.R, xlab = "Log(Velocity)",
+        ylab = 'Density', 
+        main = 'Rectangular Oversmooth',
+        col = "red",
+        type = "l")
+
+```
+
+```{r}
+# ggplot: Plotting 6 different kernel density estimates in ggplot
+#undersmooth gaussian and rectangular kernel plots
+library(ggplot2)
+library(gridExtra)
+under.gaussian.gg <- ggplot() + stat_density(data = galaxies.data, kernel = "gaussian", 
+               bw = (bw.nrd0(galaxies.data$loggalaxies)/2), 
+               aes(x = loggalaxies, fill = I("blue"),
+               color = I("black"))) +
+               labs(x = 'Log(Velocity)', y = 'Density', 
+               title = 'Gaussian Undersmooth')
+under.rectangular.gg <- ggplot() + stat_density(data = galaxies.data, kernel = "rectangular", 
+               bw = (bw.nrd0(galaxies.data$loggalaxies)/2),
+               aes(x = loggalaxies, fill = I("blue"),
+               color = I("black"))) +
+               labs(x = 'Log(Velocity)', y = 'Density', 
+               title = 'Rectangular Undersmooth')
+
+# appropriate gaussian and rectangular kernel plots 
+appro.gaussian.gg <-  ggplot() + stat_density(data = galaxies.data, kernel = "gaussian", 
+               bw = bw.nrd0(galaxies.data$loggalaxies), 
+               aes(x = loggalaxies,  fill = I("darkgreen"),
+               color = I("black"))) +
+               labs(x = 'Log(Velocity)', y = 'Density', 
+               title = "Gaussian Appropriate")
+appro.rectangular.gg <- ggplot() + stat_density(data = galaxies.data, kernel = "rectangular", 
+               bw = bw.nrd0(galaxies.data$loggalaxies),
+               aes(x = loggalaxies, fill = I("darkgreen"),
+               color = I("black"))) +
+               labs(x = 'VLog(Velocity)', y = 'Density', 
+               title = 'Rectangle Appropriate')
+
+# 2 oversmooth gaussian and rectangular kernel plots
+over.gaussian.gg <- ggplot() + stat_density(data = galaxies.data, kernel = "gaussian", 
+               bw = bw.nrd0(galaxies.data$loggalaxies)*4, 
+               aes(x = loggalaxies, fill = I("red"),
+               color = I("black"))) +
+               labs(x = 'VLog(Velocity)', y = 'Density', 
+               title = 'Gaussian Oversmooth')
+over.rectangular.gg <- ggplot() + stat_density(data = galaxies.data, kernel = "rectangular", 
+               bw = bw.nrd0(galaxies.data$loggalaxies)*4, 
+               aes(x = loggalaxies, fill = I("red"),
+               color = I("black"))) +
+               labs(x = 'VLog(Velocity)', y = 'Density', 
+               title = 'Rectangle Oversmooth')
+# print plots
+grid.arrange(under.gaussian.gg, under.rectangular.gg)
+grid.arrange(appro.gaussian.gg, appro.rectangular.gg)
+grid.arrange(over.gaussian.gg, over.rectangular.gg)
+```
+Discussion
+part c: Looking at the plots, it's evident that oversmooth plots tend to overgeneralize the  density estimation. The caviat of the oversmoothing plots is that they tends to fail at identifying the existence of super clusters, which is where undersmooth plots are very useful in, particularly the undersmooth plots show multimodal distributions which may potentially uncover the existence of superclusters. 
+
+    
+d) What is your conclusion about the possible existence of superclusters of galaxies? How many superclusters (1, 2, 3, ... )? (Hint: the existence of clusters implies the existence of empty spaces between galaxies.)
+
+When looking at the appropriate kernel density estimation function with the right bandwidth it has two tails and therefore, given the multimodal nature of the velocity distributions I suspect their might be upto 4 superclusters.
+
+e) Fit a finite mixture model using  the Mclust() function in R (from the mclust library). How many clusters did it find?  Did it find the same number of clusters as your graphical inspection? Report parameter estimates and BIC of the best model. 
+
+```{r}
+# use Mclust to get number of clusters and parameters / BIC
+#install.packages("mclust")
+
+library("mclust")
+#building the model
+galaxy_model1 <- Mclust(galaxies.data$Velocity)
+summary(galaxy_model1, parameters=TRUE)
+
+#density plot of the model
+plot(galaxy_model1,what="density")
+
+#BIC summary of the model
+mclustBIC(galaxies.data$Velocity)
+
+```
+Discussion
+
+part 1e: The density plot of the model shows three distinct superclusters with the far right tail not being as distinct.After examining the best BIC of the models it is evident that the best possible clustering is at four superclusters, with a three cluster estimate being very close in BIC; most likely due to the low number of observations at the far right tail (high velocity).
+    
+2. (Ex. 8.2 in HSAUR, modified for clarity) The **birthdeathrates** data from **HSAUR3** gives the birth and death rates for 69 countries (from Hartigan, 1975).
+
+a) Produce a scatterplot of the data. Estimate the bivariate density and overlay the corresponding contour plot on the scatterplot.
+```{r}
+# importing the dataset
+library(HSAUR3)
+library(MASS)
+library(HSAUR3)
+library(KernSmooth)
+library(reshape2)
+library(dplyr)
+
+data(birthdeathrates)
+head(birthdeathrates)
+
+length(birthdeathrates)
+nrow(birthdeathrates)
+BDRd <- bkde2D(birthdeathrates, bandwidth = sapply(birthdeathrates, dpik))
+# Rstudio
+contour(x=BDRd$x1, y=BDRd$x2, z=BDRd$fhat,
+        main = "Countour Scatterplot of Birth Death Rates :Base R",
+        xlab="Birth Rate", 
+        ylab="Death Rate",
+        xlim =c(0,60), ylim = c(0,35))
+points(birthdeathrates, pch=16, col="darkred")
+
+#ggplot
+ggplot(data=birthdeathrates,aes(birth,death)) + 
+  geom_density2d(aes(colour=..level..)) + 
+  scale_colour_gradient(low="blue",high="red") + 
+  theme_bw() +
+  geom_point() +
+  labs(title='Countour Scatterplot of Birth Death Rate :ggplot',
+       x='Birth Rate',
+       y='Death Rate') +
+  scale_x_continuous(limits = c(0,60)) +
+  scale_y_continuous(limits = c(0,35))
+```
+Discussion
+part 2a:
+we see the data are clustered near the point when 'birth rate' = 20 and 'death rate' = 10. 
+    
+b) What does the contour plot tell you about the structure of the data?
+
+It shows that most of the data points, birth rate is at least 2 times higher than death rate on a ratio of 2:1 in most countries. There are countries, and clusters of countries, whose birth rate far exceeds that ratio, but only one country has a higher death rate than it does birth rate. 
+
+    
+c) Produce a perspective plot (persp() in R, ggplot is not required for this question).
+```{r}
+persp (x=BDRd$x1, y=BDRd$x2, z=BDRd$fhat,
+       xlab="Birth Rates", 
+       ylab="Death Rates",
+       zlab="Estimated Density",
+       theta=-35, axes=TRUE, box=TRUE, main = "Birth-Death Rates Perspective plot ")
+```
+Discussion
+part 2c:
+The perspective plot validates what we established in 2b which that birth rate is twice as high as death rate and the majority of the data observations have a death rate that is proportionally smaller than the birth rate.
+
+
+d) Fit a finite mixture model using the Mclust() function in R (from the mclust library). Summarize this model using BIC, classification, uncertainty, and/or density plots.
+```{r}
+# use Mclust to get number of clusters and parameters / BIC
+#create an mclust model and print the summary
+model2 <- Mclust(birthdeathrates)
+summary(model2,parameters=T)
+
+# plotting for BIC from model2
+plot(model2,what="BIC")
+
+#plotting the classification of the model
+plot(model2,what="classification")
+
+#plotting the uncertainty of the model
+plot(model2,what="uncertainty")
+
+#plotting the density of the model
+plot(model2,what="density")
+
+#BIC summary
+mclustBIC(birthdeathrates)
+```
+
+    
+e) Discuss the results in the context of Birth and Death Rates.
+The plots above provide evidence that the data has 4 unique clusters with birth rate which is the larger cluster having a ratio of 2:1 against death rate, this is shown by the countour and the perspective plots most countries having birth rate of 20 and a death rate of 10. 
+
+
+3. (Ex. 8.3 in HSAUR, modified for clarity) Fit finite mixtures of normal densities individually for each gender in the **schizophrenia** data set from **HSAUR3**. Do your models support the *sub-type model* described in the R Documentation?
+
+    Quote from the R Documentation: *A sex difference in the age of onset of schizophrenia was noted by Kraepelin (1919). Subsequent epidemiological studies of the disorder have consistently shown an earlier onset in men than in women. One model that has been suggested to explain this observed difference is known as the subtype model which postulates two types of schizophrenia, one characterized by early onset, typical symptoms and poor premorbid competence; and the other by late onset, atypical symptoms and good premorbid competence. The early onset type is assumed to be largely a disorder of men and the late onset largely a disorder of women.* (See ?schizophrenia)
+
+```{r}
+data(schizophrenia)
+#plot the schizophrenia data using stat_density within ggplot2, facet by gender
+par(fig=c(0,1,0,1),new=T)
+ggplot(data=schizophrenia)+
+  stat_density(kernel='gaussian',adjust=1,aes(age,fill=gender)) +
+  facet_grid(gender~.) +
+       labs(title = 'Gaussian Kernal Density of Schizophrenia Diagnosis by Gender',
+       x = 'Age ',
+       y='Density')
+
+#plot a histogram of the data faceting by gender
+par(fig=c(0,1,0,1),new=T)
+ggplot(data=schizophrenia)+
+  geom_histogram(aes(age,fill=gender)) +
+  facet_grid(gender~.) +
+  labs(title = 'Histogram of Schizophrenia Diagnosis by Gender',
+       x = 'Age at the Time of Diagnosis',
+       y='Frequency')
+
+#create a male and female data set
+male <- schizophrenia %>%
+  filter(gender=='male')
+female <- schizophrenia %>%
+  filter(gender=='female')
+#create a male and female Mclust model
+male_mod <- Mclust(male$age)
+
+female_mod <- Mclust(female$age)
+#print the male model
+summary(male_mod,parameters=T)
+
+#print the female model
+summary(female_mod,parameters=T)
+
+#create a under/over density plot of the male vs female model
+par(mfrow=c(2,1))
+plot(male_mod,what='density',
+     main='',
+     xlab='Diagnosis Age of Males',ylab='Density Estimate')
+title(main='Modeled Density Estimate of Schizophrenia Diagnois by Gender')
+plot(female_mod,what='density',
+     main='',
+     xlab='Diagnosis Age of Females',
+     ylab='Density Estimate')
+
+#create a under/over BIC plot of the male vs female model
+par(mfrow=c(2,1))
+plot(male_mod,what='BIC')
+title(main='BIC Of Schizophrenia Diagnosis Model by Gender')
+plot(female_mod,what='BIC')
+```
+Discussion
+
+Part 3:From our density plots and summary it's reasonably clear that females have lower rates of schizophrenia than their counterparts, particularly in their twenties. Inversely, males suffer from higher rates of schizophrenia in the early to late twenties. Both groups have clustering at different ages, females have clustering at 25 and 46 years whereas males have clustering at 20 and 27 years. Therefore, the clustering and density estimation does supports the theory for early onset schizophrenia in men and late onset schizophrenia in women.
+

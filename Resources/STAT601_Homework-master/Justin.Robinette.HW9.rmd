@@ -1,0 +1,527 @@
+---
+title: "Homework #9"
+author: "Justin Robinette"
+date: "October 23, 2018"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+*No collaborators for any problem*
+
+```{r}
+library(HSAUR3)         #Beat the Blues & phosphate datasets
+library(stats)          #statistics package
+library(knitr)          #kable
+library(ggplot2)        #visualization
+library(gridExtra)      #visualization
+library(reshape2)       #data manipulation
+library(dplyr)          #data manipulation
+library(tidyr)          #data manipulation
+library(lme4)           #linear mixed-effect models
+library(multcomp)       #cftest
+```
+
+**Problem #1, Part A:** Following up with the Beat the Blues data from the video (package *HSAUR3*), construct boxplots to compare the factor variable **drug** in an analogous way to how we constructed boxplots in the video for the treatment variable. Discuss the results.
+
+**Results:** Comparing the box plots, based on whether or not a patient took anti-depressants, we see that over time the BDI score decreases more for patients who took the medicine (**Figure 1.1**) versus those that didn't (**Figure 1.2**). This decrease is especially apparent in the first three months of the study for those patients on the drugs. At 5 and 8 months, the median BDI score for patients on the drugs actually begins to increase. My assumption, based on this, is that the effects of the drugs are stronger in the first 3 months. After 3 months, there is a plateau in the effectiveness of the anti-depressants. 
+
+The patients not on anti-depressants experience a consistent decrease in their BDI scores. Unlike patients on the drugs, the median decrease continues through all 5 observations. At 8 months, the median BDI score of patients on the drugs is approximately the same as that of the patients that were not given the anti-depressants. 
+
+Lastly, it appears the patients that were given anti-depressants had less variation in their BDI score, as well as fewer outlier values in the study.
+
+*Analogous base R plots are included.*
+
+```{r, warning=FALSE}
+data("BtheB", package = "HSAUR3")
+
+# get subsets of data based on 'drug' factor 
+drug_yes <- subset(BtheB, drug == "Yes")[,grep("bdi", names(BtheB))]
+drug_no <- subset(BtheB, drug == "No")[,grep("bdi", names(BtheB))]
+
+### ggplot boxplots for 'drug' predictor variable ###
+ggplot(data = melt(drug_yes, na.rm = TRUE), 
+       aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot(aes(fill = variable)) + 
+  labs(title = "Took Anti-Depressants", subtitle = "Figure 1.1", y = "BDI",
+       x = "Time (months)") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_x_discrete(labels = c("Pre-Screen", "2 Months", "3 Months", 
+                              "5 Months", "8 Months")) +
+  scale_fill_discrete(labels = c("Pre-Screen", "2", "3", "5", "8")) +
+  scale_y_continuous(breaks = seq(0, 50, by = 10)) +
+  guides(fill = guide_legend("Screening\nIntervals(mos)"))
+ggplot(data = melt(drug_no, na.rm = TRUE), 
+       aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot(aes(fill = variable)) + 
+  labs(title = "No Anti-Depressants", subtitle = "Figure 1.2", y = "BDI",
+       x = "Time (months)") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_x_discrete(labels = c("Pre-Screen", "2 Months", "3 Months", 
+                              "5 Months", "8 Months")) +
+  scale_fill_discrete(labels = c("Pre-Screen", "2", "3", "5", "8")) +
+  scale_y_continuous(breaks = seq(0, 50, by = 10)) +
+  guides(fill = guide_legend("Screening\nIntervals(mos)"))
+### boxplots from lecture applied to 'drug' predictor variable ###
+layout(matrix(1:2, nrow = 1))
+ylim <- range(BtheB[,grep("bdi", names(BtheB))], na.rm = T)
+# plot side by side boxplots of 'drug' factor
+par(mfrow = c(1,2))
+boxplot(drug_yes, main = "Yes Anti-Depressants\nbase R", ylab = "BDI", 
+        xlab = "Time in Months",
+        names = c(0, 2, 3, 5, 8), ylim = ylim, col = rainbow(5))
+boxplot(drug_no, main = "No Anti-Depressants\nbase R", ylab = "BDI", 
+        xlab = "Time in Months",
+        names = c(0, 2, 3 ,5, 8), ylim = ylim, col = rainbow(5))
+```
+
+**Problem #1, Part B:** Repeat (a) for the **length** variable. Discuss the results.
+
+**Results:** Looking at the comparison between whether a patient was experiencing a current episode of depression greater than 6 months (**Figure 1.3**) or less than 6 months (**Figure 1.4**), we see a steeper decline in the BDI score when patients are experiencing a shorter episode. 
+
+We also see, in **Figure 1.4**, that the patients with shorter periods of depression had less variation in their scores and less pronounced outliers than patients who were experiencing longer bouts with depression (**Figure 1.3**).
+
+Predictably, we also see that patients with shorter periods of depression had a lower median BDI score at each screening interval. 
+
+*Analogous base R plots are included.*
+
+```{r}
+# get subsets of data based on 'drug' factor 
+length_long <- subset(BtheB, length == ">6m")[,grep("bdi", names(BtheB))]
+length_short <- subset(BtheB, length == "<6m")[,grep("bdi", names(BtheB))]
+
+### ggplot boxplots for 'drug' predictor variable ###
+ggplot(data = melt(length_long, na.rm = TRUE), 
+       aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot(aes(fill = variable)) + 
+  labs(title = "Current Episode > 6 Months", subtitle = "Figure 1.3", y = "BDI",
+       x = "Time (months)") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_x_discrete(labels = c("Pre-Screen", "2 Months", "3 Months", 
+                              "5 Months", "8 Months")) +
+  scale_fill_discrete(labels = c("Pre-Screen", "2", "3", "5", "8")) +
+  scale_y_continuous(breaks = seq(0, 50, by = 10)) +
+  guides(fill = guide_legend("Screening\nIntervals(mos)"))
+ggplot(data = melt(length_short, na.rm = TRUE), 
+       aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot(aes(fill = variable)) + 
+  labs(title = "Current Episode < 6 Months", subtitle = "Figure 1.4", y = "BDI",
+       x = "Time (months)") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_x_discrete(labels = c("Pre-Screen", "2 Months", "3 Months", 
+                              "5 Months", "8 Months")) +
+  scale_fill_discrete(labels = c("Pre-Screen", "2", "3", "5", "8")) +
+  scale_y_continuous(breaks = seq(0, 50, by = 10)) +
+  guides(fill = guide_legend("Screening\nIntervals(mos)"))
+### boxplots from lecture applied to 'drug' predictor variable ###
+layout(matrix(1:2, nrow = 1))
+ylim <- range(BtheB[,grep("bdi", names(BtheB))], na.rm = T)
+# plot side by side boxplots of 'drug' factor
+par(mfrow = c(1,2))
+boxplot(length_long, main = "Current Episode\n>6mo base R", ylab = "BDI", 
+        xlab = "Time in Months",
+        names = c(0, 2, 3, 5, 8), ylim = ylim, col = rainbow(5))
+boxplot(length_short, main = "Current Episode\n< 6mo base R", ylab = "BDI", 
+        xlab = "Time in Months",
+        names = c(0, 2, 3 ,5, 8), ylim = ylim, col = rainbow(5))
+```
+
+**Problem #1, Part C:** Use the *lm* function to fit a model to the Beat the Blues data that assumes that the reported measurements are independent. Compare the results to those from fitting the random intercept model *BtheB_lmer1* from the video.
+
+**Results:** Here I have fit a model for the data using the *lm* function. I also included the *BtheB_lmer1* model from lecture. We can compare the two models by looking at **Figure 1.5**. Here we see that the linear model has a superior AIC but an inferior BIC value. Because both metrics are used for comparing models, it is not clear which model is superior.
+
+**Figure 1.6** and **Figure 1.7** show the estimated intercepts and residuals, respectively. According to the *"pencil"* test discussed in the lecture video, the *BtheB_lmer1* model looks accurate. A comparison of the residuals plot for the linear model is included. As we can see, this model seems less accurate than the *BtheB_lmer1* model. 
+
+*No base R plots for **Figure 1.6** and **Figure 1.7** are shown since the question does not request plotting.*
+
+```{r}
+# add subject identifier
+BtheB$subject <- factor(rownames(BtheB))
+
+# use dplyr and tidyr to reshape dataframe keeping bdi.pre and bdi as separate variables and introducing time variable
+BtheB_long <- BtheB %>%
+  gather(time,bdi, 5:8) %>%
+  mutate(time = as.numeric(gsub(time, pattern = "[[:alpha:]]|[[:punct:]]",
+                           replacement=''))) %>%
+  dplyr::select(c(subject, time), everything())
+
+# fit model using lm
+BtheB_lm <- lm(bdi ~ ., data = BtheB_long)
+
+# model from lecture
+BtheB_lmer1 <- lmer(bdi ~ bdi.pre + time + treatment + drug + length + (1|subject),
+                    data = BtheB_long, REML = FALSE, na.action = na.omit) 
+
+#compare models in dataframe
+model_comp <- 
+  as.data.frame(cbind(AIC(BtheB_lm, BtheB_lmer1)[,2], BIC(BtheB_lm, BtheB_lmer1)[,2]))
+colnames(model_comp) <- c("AIC", "BIC")
+model_comp$Model <- c("Linear Model", "Linear Mixed-Effects Model")
+model_comp <- model_comp %>% dplyr::select(Model, everything())
+
+# create comparison output
+kable(model_comp, caption = "Figure 1.5: Comparison of Models")
+
+# print residuals / intercept comparison
+residuals <- function(object, obs) obs - predict(object)
+qint <- ranef(BtheB_lmer1)$subject[["(Intercept)"]]
+qres <- residuals(BtheB_lmer1, BtheB_long$bdi.pre)
+qqnorm(qint, ylab = "Estimated Random Intercepts", xlim = c(-3,3), ylim = c(-20,20),
+       main = "Figure 1.6: Linear Mixed-Effect\nModel Random Intercepts")
+qqline(qint, col = "red", lwd = 3)
+qqnorm(qres, xlim = c(-3,3), ylim = c(-20,20), ylab = "Estimated Residuals",
+       main = "Figure 1.7: Linear Mixed-Effect Model Residuals")
+qqline(qres, col = "red", lwd = 3)
+# residuals plot for linear model
+plot(BtheB_lm, which = 2)
+```
+
+**Problem #1, Part D:** Investigate and discuss whether there is any evidence of an interaction between treatment and time for the *Beat the Blues* data. 
+
+**Results:** To investigate the interaction between treatment and time for *Beat the Blues*, I fit two models that include an interaction operator as a predictor for BDI. The first model is a linear regression model and the second is a linear mixed-effects model. 
+
+We then can examine the p-value of the interaction predictor in each model. **Figure 1.8** shows the p-value of the interaction term in the linear regression model. In this model, we see the interaction term is significant at an alpha of 0.05. This means that for this model, we can reject the Null Hypothesis that the interaction term will not impact the model's accuracy. **Figure 1.9** shows the coefficients from the linear mixed-effects model. Here we see the interaction term is again significant, but this time at an alpha of 0.1. Therefore, whether we reject the Null would depend on our alpha value. At alpha = 0.05, we would not reject the Null Hypothesis that the interaction in *time* and *treatment* has no impact on the model accuracy.
+
+Because of this difference, I looked at the AIC and BIC values of the linear model and the linear mixed-effects model both with the interaction and without. We are again given mixed results.
+
+In **Figure 1.10**, we see the AIC value improves (goes down) in the linear model when the interaction term is present. The AIC value also improves in the linear mixed-effects model when the interaction term is present. 
+
+**Figure 1.11** compares the BIC values of the models depending on the presence of the interaction term. Here, we again see the linear model improves (lower BIC) when we include the interaction term. Interestingly, the BIC gets worse (goes up) in the linear mixed-effects model when we include the interaction. This difference may be explained by the fact that the BIC penalizes models more heavily for increased complexity. 
+
+```{r}
+# build lm and lmer models with interaction
+BtheB_lm2 <- lm(bdi ~ subject + time + drug + length + treatment + bdi.pre 
+               + time*treatment, data = BtheB_long, na.action = na.omit)
+BtheB_lmer2 <- lmer(bdi ~ bdi.pre + time + treatment + drug + length + (1|subject) +
+                      time*treatment, data = BtheB_long, 
+                    REML = FALSE, na.action = na.omit) 
+
+# summarize p-values with treatment in lm and lmer models
+kable(summary(BtheB_lm2)$coefficients[99,4], col.names = "P-Value",
+      caption = "Figure 1.8: P-Value of Time/Treatment Interaction in Linear Model")
+paste("Figure 1.9: Model Coefficients with Time/Treatment Interaction in Linear Mixed-Effect Model")
+cftest(BtheB_lmer2)
+
+# compare AIC/BIC
+kable(cbind(AIC(BtheB_lm), AIC(BtheB_lm2), AIC(BtheB_lmer1), AIC(BtheB_lmer2)), 
+      col.names = c("LM AIC No Interaction", "LM AIC with Interaction",
+                    "LMER AIC No Interaction", "LMER AIC with Interaction"),
+      caption = "Figure 1.10: AIC by Model and Interaction") 
+
+kable(cbind(BIC(BtheB_lm), BIC(BtheB_lm2), BIC(BtheB_lmer1), BIC(BtheB_lmer2)), 
+      col.names = c("LM BIC No Interaction", "LM BIC with Interaction",
+                    "LMER BIC No Interaction", "LMER BIC with Interaction"),
+      caption = "Figure 1.11: BIC by Model and Interaction") 
+
+```
+
+**Problem #1, Part E:** Construct a plot of the mean profiles of both treatment groups in the *Beat the Blues* data, showing also standard deviation bars at each time point. (Attempt to use **ggplot2** library to do this).
+
+**Results:** **Figure 1.12** shows the mean profile of the 'Treatment as Usual' treatment method by time point. The plot shows the boxplot for each time period, the dashed white line represents the mean of that time period for 'Treatment as Usual' observations. The mean value is also included with each boxplot for each time point. Lastly, I've plotted the standard deviation error bars. The top bar for each boxplot is the mean plus the standard deviation. The bottom bar is the mean minus the standard deviation. In this plot we don't see any outliers and the variation is the largest for the 2, 3 and 5 month time points.
+
+**Figure 1.13** is constructed exactly the same as **Figure 1.12** except using the 'Beat the Blues' treatment observations. In this plot, we do see outliers in the 3 and 5 month time points. The largest variation can be seen in the 3 month time point. Compared to **Figure 1.12**, overall we see less variation in the BDI among the observations treated with the 'Beat the Blues' method. 
+
+*Analogous base R plots are included.*
+
+```{r}
+treatment_tau <- subset(BtheB, treatment == "TAU")[,grep("bdi", names(BtheB))]
+treatment_btb <- subset(BtheB, treatment == "BtheB")[,grep("bdi", names(BtheB))]
+
+# sd function for error bars courtesy of Todos Togos: https://www.r-bloggers.com/boxplot-with-mean-and-standard-deviation-in-ggplot2-plus-jitter/
+min.mean.sd.max <- function(x) {
+  r <- c(min(x), mean(x) - sd(x), mean(x), mean(x) + sd(x), max(x))
+  names(r) <- c("ymin", "lower", "middle", "upper", "ymax")
+  r
+}
+
+# get mean/sd values
+tau_stats <- melt(treatment_tau, na.rm = TRUE) %>% 
+  group_by(variable) %>%
+  summarize(mean = mean(value))
+btb_stats <- melt(treatment_btb, na.rm = TRUE) %>% 
+  group_by(variable) %>%
+  summarize(mean = mean(value))
+
+# plot mean profiles 
+ggplot(data = melt(treatment_tau, na.rm = TRUE), 
+       aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot(aes(fill = variable)) +
+  stat_summary(fun.data = min.mean.sd.max, geom = "errorbar") +
+  stat_summary(fun.y = mean, color = "white", geom = "text", 
+               label = "-----", size = 10, show.legend = FALSE) +
+  geom_label(data = tau_stats, size = 3, nudge_y = c(9, 10, 9, 10, 9), 
+             show.legend = FALSE, aes(x = variable, y = mean, 
+                                      label = 
+                                        paste("Mean: ",round(mean, 2)))) +
+  labs(title = "Treatment as Usual", subtitle = "Figure 1.12", y = "BDI",
+       x = "Time (months)") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  scale_x_discrete(labels = c("Pre-Screen", "2 Months", "3 Months", 
+                              "5 Months", "8 Months")) +
+  scale_fill_discrete(labels = c("Pre-Screen", "2", "3", "5", "8")) +
+  scale_y_continuous(breaks = seq(0, 50, by = 10)) +
+  guides(fill = guide_legend("Screening\nIntervals(mos)"))
+ggplot(data = melt(treatment_btb, na.rm = TRUE), 
+       aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot(aes(fill = variable)) +
+  stat_summary(fun.data = min.mean.sd.max, geom = "errorbar") +
+  stat_summary(fun.y = mean, color = "white", geom = "text", 
+               label = "-----", size = 10, show.legend = FALSE) +
+  geom_label(data = btb_stats, size = 3, nudge_y = c(11, 9, 7, 6, 7), 
+             show.legend = FALSE, aes(x = variable, y = mean, 
+                                      label = 
+                                        paste("Mean: ",round(mean, 2)))) +
+  labs(title = "Beat the Blues Treatment", subtitle = "Figure 1.13", y = "BDI",
+       x = "Time (months)") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  scale_x_discrete(labels = c("Pre-Screen", "2 Months", "3 Months", 
+                              "5 Months", "8 Months")) +
+  scale_fill_discrete(labels = c("Pre-Screen", "2", "3", "5", "8")) +
+  scale_y_continuous(breaks = seq(0, 50, by = 10)) +
+  guides(fill = guide_legend("Screening\nIntervals(mos)"))
+
+# get means and sds
+tau_sd <- as.data.frame(apply(treatment_tau, na.rm = TRUE, 2, sd))
+btb_sd <- as.data.frame(apply(treatment_btb, na.rm = TRUE, 2, sd))
+
+# plot in base R
+boxplot(treatment_tau, main = "Treatment as Usual - base R", xlab = "Time (months)",
+        ylab = "BDI", names = c(0, 2, 3, 5, 8))
+points(tau_stats, pch = 1, col = "darkgreen")
+points(tau_sd, pch = 3, col = "purple")
+legend("topright", c("Mean", "St.D"), fill = c("darkgreen", "purple"))
+boxplot(treatment_btb, main = "Beat the Blues Treatment - base R", 
+        xlab = "Time (months)", ylab = "BDI", names = c(0, 2, 3, 5, 8))
+points(btb_stats, pch = 1, col = "#2D68C4")
+points(btb_sd, pch = 3, col = "#F2A900")
+legend("topright", c("Mean", "St.D"), fill = c("#2D68C4", "#F2A900"))
+```
+**Problem #2, Part A:** Consider the **phosphate** data from the package **HSAUR3**. This data shows the plasma inorganic phosphate levels for 33 subjects, 20 of whom are controls and 13 of whom have been classified as obese (Davis, 2002). Perform the following on the dataset. 
+
+Construct boxplots by group and discuss. 
+
+**Results:** **Figure 2.1** shows the distribution for phosphate levels by time of the control group. In this plot we see that phosphate levels, as a whole, drop for the first 1-1/2 hours before steadily increasing to the 5 hour mark. There are outliers present at both the 2 and 5 hour time points. 
+
+**Figure 2.2** is constructed the same as **Figure 2.1** using the obese group's data. We see more outliers, present at time periods baseline, 0.5, 1, 1.5. Comparing the two groups, we see the obese group's phosphate levels are generally higher than those of the control group. 
+
+*Analogous base R plots are included.*
+
+```{r}
+data("phosphate", package = "HSAUR3")
+
+group_control <- subset(phosphate, group == "control")
+group_obese <- subset(phosphate, group == "obese")
+
+# plot boxplots for both groups
+ggplot(data = melt(group_control), 
+       aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot(aes(fill = variable)) + 
+  labs(title = "Control Group Phosphate Levels by Time", 
+       subtitle = "Figure 2.1", y = "Phosphate Level",
+       x = "Time (hours)") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  scale_x_discrete(labels = c("Baseline", "0.5hr", "1hr", "1.5hrs", 
+                              "2hrs","3hrs", "4hrs", "5hrs")) +
+  scale_fill_discrete(labels = c("Baseline", "0.5", "1", "1.5", "2", "3",
+                                 "4", "5")) +
+  scale_y_continuous(breaks = seq(0, 7, by = 0.5)) +
+  guides(fill = guide_legend("Screening\nIntervals(hrs)"))
+ggplot(data = melt(group_obese), 
+       aes(x = variable, y = value, fill = variable)) +
+  geom_boxplot(aes(fill = variable)) + 
+  labs(title = "Obese Group Phosphate Levels by Time", 
+       subtitle = "Figure 2.2", y = "Phosphate Level",
+       x = "Time (hours)") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  scale_x_discrete(labels = c("Baseline", "0.5hr", "1hr", "1.5hrs", 
+                              "2hrs","3hrs", "4hrs", "5hrs")) +
+  scale_fill_discrete(labels = c("Baseline", "0.5", "1", "1.5", "2", "3",
+                                 "4", "5")) +
+  scale_y_continuous(breaks = seq(0, 7, by = 0.5)) +
+  guides(fill = guide_legend("Screening\nIntervals(hrs)"))
+
+# base R plots
+boxplot(group_control[,2:9], 
+        main = "Control Group Phosphate Levels\nbase R", 
+        ylab = "Phosphate Levels", 
+        xlab = "Time (hrs)",
+        names = c(0, 0.5, 1, 1.5, 2, 3, 4, 5),
+        col = rainbow(8))
+boxplot(group_obese[,2:9], 
+        main = "Obese Group Phosphate Levels\nbase R", 
+        ylab = "Phosphate Levels", 
+        xlab = "Time (hrs)",
+        names = c(0, 0.5, 1 ,1.5, 2, 3, 4, 5),
+        col = rainbow(8))
+```
+
+
+**Problem #2, Part B:** Produce separate plots of the profiles of the individuals in each group.
+
+**Results:** **Figure 2.3** shows the phosphate levels, by individual, at each measured time interval. Similar to **Figure 2.1** above, we see a general "U" shape in the plot. The phosphate levels are higher at the baseline interval and then decrease somewhat consistently until the 1.5 hour time interval. Then, generally, the phosphate levels begin to increase to the 5 hour interval. 
+
+**Figure 2.4** is constructed the same as **Figure 2.3** using the obese group. We see a similar, though less pronounced pattern as we saw in **Figure 2.3**. The levels decrease initially before increasing toward the end of the measurement period. 
+
+*Analogous base R plots are included.*
+
+```{r}
+# add individual variable for plotting
+group_control$individual <- factor(rownames(group_control))
+group_obese$individual <- factor(rownames(group_obese))
+
+# plot individual levels at each time interval
+ggplot(data = melt(group_control), aes(x = variable, y = value)) +
+  geom_line(aes(group = individual, color = individual)) +
+  labs(title = "Control Group Phosphate Level at Time Points",
+       subtitle = "Figure 2.3", x = "Time (in hours)", 
+       y = "Phosphate Level") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 45)) +
+  scale_x_discrete(labels = c("Baseline", "0.5hr", "1hr", "1.5hrs", 
+                              "2hrs","3hrs", "4hrs", "5hrs")) +  
+  guides(color = guide_legend(ncol = 2, "Individual #"))
+ggplot(data = melt(group_obese), aes(x = variable, y = value)) +
+  geom_line(aes(group = individual, color = individual)) +
+  labs(title = "Obese Group Phosphate Level at Time Points",
+       subtitle = "Figure 2.4", x = "Time (in hours)", 
+       y = "Phosphate Level") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 45)) +
+  scale_x_discrete(labels = c("Baseline", "0.5hr", "1hr", "1.5hrs", 
+                              "2hrs","3hrs", "4hrs", "5hrs")) +  
+  guides(color = guide_legend(ncol = 2, "Individual #"))
+
+# reshape data for base R plots
+control_long <- melt(group_control)
+obese_long <- melt(group_obese)
+control_long$variable <- as.numeric(gsub('[[:alpha:]]','',control_long$variable))
+names(control_long)[3] <- "Time (in hours)"
+obese_long$variable <- as.numeric(gsub('[[:alpha:]]','',obese_long$variable))
+names(obese_long)[3] <- "Time (in hours)"
+
+# base R line plots for each individual including boxplots
+plot(x = control_long$`Time (in hours)`, y = control_long$value, type = "p", pch = 1,
+     main = "Control Group Phosphate Level\nat Time Points - base R",
+     xlab = "Time (in hours)", ylab = "Phosphate Level")
+for (i in 1:length(unique(control_long[, "individual"]))){
+  lines(control_long$`Time (in hours)`[control_long$individual == i],
+        control_long$value[control_long$individual == i])
+}
+plot(x = obese_long$`Time (in hours)`, y = obese_long$value, type = "p", pch = 1,
+     main = "Obese Group Phosphate Level\nat Time Points - base R",
+     xlab = "Time (in hours)", ylab = "Phosphate Level")
+for (i in 1:length(unique(obese_long[, "individual"]))){
+  lines(obese_long$`Time (in hours)`[control_long$individual == i],
+        obese_long$value[control_long$individual == i])
+}
+```
+
+**Problem #2, Part C:** Guided by how these plots fit, which linear mixed effects models do you think might be sensible? (Hint: Discuss intercept and slope, intercept and interaction).
+
+**Results:** A sensible approach would be to fit a linear mixed effects model with an interaction between the group and time variables. I believe we can best see the relationship between the two by taking another look at **Figure 2.1** and **Figure 2.2** shown below. These boxplots show that the phosphate levels respond differently, at each interval, based on the group. In the first boxplot, the phosphate levels reach their minimum measured level at t = 1.5 hours. The values then begin to increase rather consistently to t = 5 hours. 
+
+In the second boxplot, **Figure 2.2**, the phosphate levels for obese individuals reached their lowest level at t = 2 hours and then begin to increase. We notice, comparing these 2 plots, that for obese subjects the phosphate levels maintain a more consistent level. Conversely, in the control group, the phosphate levels decline at a higher rate and then increase at a higher rate - much more of a "U" shape. 
+
+When comparing **Figure 2.3** and **Figure 2.4**, we can see the variation in the intercepts of the two groups. The control group, in **Figure 2.3**, appears to have an intercept contained mostly between y = 3.5 and y = 5. **Figure 2.4** shows more variation with the intercepts of the obese group being spread out from y = 3 to y = 6 with most being clustered tighter between approximately y = 4.25 and y = 5.4. 
+
+The differences discussed above provide evidence that a linear mixed-effects model with an interaction predictor between *time* and *group* would be a sensible model. We will examine the effects of an interaction further in the following exercise. 
+
+
+**Problem #2, Part D:** Convert the data to long version and fit the model of your choice and discuss the results.
+
+**Results:** First, I converted the phosphate table to long and then fit a linear mixed effects model that did not include an interaction between *time* and *group*, as discussed in the previous exercise. Next I fit another linear mixed effects model that contained an interaction between *time* and *group*. Excluding the interaction term, the models are the same.
+
+I then examined the AIC and BIC values of both models in **Figure 2.5**. Using this metric, we see that the model with an interaction term is superior to the model without the same interaction. This is evidence in support of my conclusion in the previous exercise. 
+
+**Figure 2.6** and **Figure 2.7** show the coefficients of both models. In **Figure 2.7**, we see that many of the interaction predictors are statistically significant at an alpha of 0.01. This helps to explain the superior AIC and BIC values from the prior table.
+
+**Figure 2.8** and **Figure 2.9** show the residuals and estimated random intercepts for the model without the interaction. **Figure 2.10** and **Figure 2.11** show the same values for the model with the interaction. Using the "pencil" test described in the lecture, we see that both models are pretty accurate. Neither model is markedly better than the other with these metrics.
+
+Lastly, **Figure 2.12** compares the Mean Square Error values of both models. We see that the linear mixed-effects model with the interaction term is superior (**error rate = 15.1%**), in predicting phosphate levels, when compared with the model that did not contain an interaction (**error rate = 18.7%**). 
+
+Based on the figures described above, and shown below, I conclude that there is an interaction between the *group* and the *time* variables. 
+
+*No base R plots are shown since the question does not request plotting.*
+
+```{r}
+# add individual column for each subject
+phosphate$individual <- factor(rownames(phosphate))
+# convert to long form and rename columns appropriately
+phosphate_long <- phosphate %>%
+  gather(time, level, 3:9) %>%
+  mutate(time = factor(gsub(time, pattern = "[[:alpha:]]", replacement = "")))
+colnames(phosphate_long)[2] <- c('baseline')
+
+# fit lm and lmer model
+phosphate_lmer <- lmer(level ~ baseline + group + time + (1|individual), 
+                     data = phosphate_long, REML = FALSE, na.action = na.omit)
+phosphate_lmer_i <- lmer(level ~ baseline + group * time + (1|individual),
+                       data = phosphate_long, REML = FALSE, na.action = na.omit)
+
+# print AIC and BIC
+phosph_comp <-
+  as.data.frame(cbind(AIC(phosphate_lmer, phosphate_lmer_i)[,2],
+                      BIC(phosphate_lmer, phosphate_lmer_i)[,2]))
+phosph_comp$Model <- c("LME Model No Interaction", "LME Model Interaction")
+phosph_comp <- phosph_comp %>% dplyr::select(Model, everything())
+kable(phosph_comp, caption = "Figure 2.5: Comparison of Models",
+      col.names = c("Model", "AIC Value", "BIC Value"))
+
+# print model coefficients to look at p-values
+paste("Figure 2.6: Coefficients of Linear Mixed-Effects Model No Interaction")
+cftest(phosphate_lmer)
+paste("Figure 2.7: Coefficients of Linear Mixed-Effects Model With Interaction")
+cftest(phosphate_lmer_i)
+
+# print intercepts and residuals for both models
+qint1 <- ranef(phosphate_lmer)$individual[["(Intercept)"]]
+qres1 <- residuals(phosphate_lmer, phosphate_long$level)
+qqnorm(qint1, ylab = "Estimated Random Intercepts", xlim = c(-3,3), ylim = c(-5,5),
+       main = "Figure 2.8: LME Model No Interaction\nRandom Intercepts")
+qqline(qint1, col = "blue", lwd = 3)
+qqnorm(qres1, xlim = c(-3,3), ylim = c(-5,5), ylab = "Estimated Residuals",
+       main = "Figure 2.9: LME Model No Interaction Residuals")
+qqline(qres1, col = "blue", lwd = 3)
+
+qint2 <- ranef(phosphate_lmer_i)$individual[["(Intercept)"]]
+qres2 <- residuals(phosphate_lmer_i, phosphate_long$level)
+qqnorm(qint2, ylab = "Estimated Random Intercepts", xlim = c(-3,3), ylim = c(-5,5),
+       main = "Figure 2.10: LME Model With Interaction\nRandom Intercepts")
+qqline(qint2, col = "green", lwd = 3)
+qqnorm(qres2, xlim = c(-3,3), ylim = c(-5,5), ylab = "Estimated Residuals",
+       main = "Figure 2.11: LME Model With Interaction\nResiduals")
+qqline(qres1, col = "green", lwd = 3)
+
+# print mean square error
+lmer_pred <- predict(phosphate_lmer, newdata = phosphate_long)
+lmer_i_pred <- predict(phosphate_lmer_i, newdata = phosphate_long)
+lmer_error <- round(mean((phosphate_long$level - lmer_pred)^2), 4)
+lmer_i_error <- round(mean((phosphate_long$level - lmer_i_pred)^2), 4)
+kable(cbind(lmer_error, lmer_i_error), col.names = c("LME Model No Interaction MSE",
+                                                 "LME Model With Interaction MSE"),
+      caption = "Figure 2.12: Mean Square Error Comparison")
+```
+
+
+
+
+
+

@@ -1,0 +1,353 @@
+---
+title: "Homework 6"
+author: "Amin Baabol"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+Note: There are no collaborators for this assignment
+## Exercises
+
+
+1. (Ex. 10.1 pg 207 in HSAUR, modified for clarity) Consider the **bodyfat** data from the **TH.data** package introduced in Chapter 9.  
+
+
+```{r}
+#Packages
+library("HSAUR3")
+library("mgcv")
+library("GGally")
+library("mboost")
+library("rpart")
+library("wordcloud")
+library("TH.data")   
+library("splines")
+library("MASS")
+```
+
+a) Use graphical methods to suggest which variables should in the model to predict body fat. (Hint: Are there correlated predictors?) Make sure to explain your reasoning.
+
+
+### Discussion
+After carefully examining the plots it seems that certain predictor variables are highly correlated with each other. For example "anthro3b" and "anthro4" show strong correlation, somewhere near 0.95. This multicollinearity may present inject bias into our predictions. Therefore, I opted to remove variables that varibales that show strong correlation. While this method of variable selection through graphical means isn't efficient it does paint a general picture of the dynamics of the variables at play. 
+
+
+```{r}
+data("bodyfat")
+#head(bodyfat)
+
+
+#For ease of readability we'll only plot up to 5 variables per plot
+#Base R
+Base.R.part1  <- pairs(bodyfat[,1:5], panel = function(x, y){
+  points(x, y)
+  lines(lowess(x, y), lwd = 2, col = "red")},
+  main="Base R: plot part 1")
+Base.R.part2  <- pairs(bodyfat[,6:10],panel = function(x, y){
+  points(x, y)
+  lines(lowess(x, y), lwd = 2, col = "red")},
+  main="Base R: plot part 2")
+
+
+#ggpairs
+ggpairs.part1 <- ggpairs(bodyfat[,1:5], lower = list(continuous = "smooth"))
+ggpairs.part2 <- ggpairs(bodyfat[,6:10], title="Bodyfat correlation")
+ggpairs.part1
+ggpairs.part2
+
+
+#Correlation matrix plot
+ggcorr(bodyfat, label = TRUE, label_round = 2)
+
+
+#removing the highly correlated variables from the new dataset 
+DEXfat <- bodyfat$DEXfat
+object.class <- bodyfat[,!names(bodyfat) %in% 'DEXfat']
+
+
+#constructing the upper half of the correlation matrix
+corr.matrix1 <- cor(object.class)
+corr.matrix1[lower.tri(corr.matrix1)] <- 0
+diag(corr.matrix1) <- 0
+
+
+#re-introducing DEXfat back into the dataset and removing highly correlated variables
+bodyfat2 <- object.class[,!apply(corr.matrix1,2,function(x) any(x > abs(0.90)))]
+bodyfat2 <- cbind(bodyfat2,DEXfat)
+
+
+#constructing bottom half of the correlation matrix
+corr.matrix2 <- cor(object.class)
+corr.matrix2[lower.tri(corr.matrix2)] <- 0
+diag(corr.matrix2) <- 0
+bottom.half <- object.class[,!apply(corr.matrix2,2,function(x) any(x > abs(0.8)))]
+bottom.half <- cbind(bottom.half,DEXfat)
+
+
+```
+
+b) For feasability of the class, fit a generalised additive model assuming normal errors using the following code. 
+  - Assess the **summary()** and **plot()** of the model (don't need GGPLOT for a plot of the model). Are all          covariates informative? Should all covariates be smoothed or should some be included as a linear effect? 
+  - Report GCV, AIC, and total model degrees of freedom. Discuss how certain you are that you have a reasonable        summary of the actual model flexibility.
+  - Produce a diagnostic plot using **gam.check()** function. Are any concerns raised by the diagnostic plot?
+  - Write a discussion on all of the above points.
+
+
+### Discussion
+
+To illustrate the effects predictor variables on DEXfat, I off started the feasibility assessment by fitting the generalized additive model only selecting to include the remaining variables from part a of this exercise. bodyfat_gam <- gam(DEXfat~ s(age) + s(waistcirc) + s(hipcirc) + s(elbowbreadth) + s(kneebreadth)+ s(anthro3a) + s(anthro3c), data = body.fat)
+
+According to the statistics of the model summary only the following parametric and smooth terms have statistical significance:
+  -the intercept
+  -waistcirc
+  -hipcirc
+  -kneebreadth
+  -anthro3a
+
+
+Furthermore, the effective degree of freedom indicates the complexity of the smooth terms indicates that most terms are have EDF of 1 means most of these terms may be linear except for kneebreadth and anthro3c.it's not enough to only check the p-values for the smooth terms during the variable selection process,visually inspecting the partial effect plots, it appears that a horizontal line might be able to fit through the partial effect plots for some of the covariates, mainly age and elbowbreadth. Fitting a horizontal line in the confidence interval means the smooth term is hardly explaining the changes in the response and therefore should NOT be included.
+
+
+Moreover, the model reports:
+  -GCV of 8.4354
+  -AIC of 345.708
+  -Adjusted R-squared of 0.953 with a deviance explained  of 96.7%
+  -Total degrees of Freedom of 21.57091
+
+
+While the adjusted R-squared and the gcv look good though the AIC is relatively high and the degrees of freedom doesn't match the number of smoothing terms, however, running the gam.check function we see a few issues arise. Firstly, although the plot converges after 41 iterations, we see that the explanatory variables 
+  -age
+  -elbowbreadth
+  -anthro3c 
+have low p-values. Interestingly enough, these variables showed high p-values during the significance of the smooth terms approximation but in the model diagnostics they're showing low p-values which means the dimensions of the basis for the smooth are too low which may potentially lead to over-smoothing, hence they should either be dropped or should NOT be smoothed. Furthermore, in the diagnostics plots, we can see that the residuals don't follow the line well which may be an issue with our normality assumption. Moreover, the histogram shows a slight right sknewness but nothing of concern. The residuals vs fitted plot indicate a good degree of randomness while the response vs the fitted plot shows a good linear relationship. All is all, the diagnostic plots show that while the GAM model is moderately adequate it badly need further improvements.
+
+
+```{r}
+#fitting first model
+bodyfat_gam <- gam(DEXfat ~ s(age) + s(waistcirc) + s(hipcirc) + s(elbowbreadth) + s(kneebreadth)+ s(anthro3a) + s(anthro3c), data = bodyfat)
+
+
+#summary
+summary(bodyfat_gam)
+
+
+#plot
+layout(matrix(1:4, ncol = 2))
+plot(bodyfat_gam,shade = TRUE,
+     col = "red",
+     shade.col = "lightblue",
+      main = "Model1")
+
+
+#GCV
+bodyfat_gam$gcv.ubre
+
+
+#AIC and total model degrees of freedom
+bodyfat_gam$aic   
+sum(summary(bodyfat_gam)$edf)
+
+
+#Adjusted R^2
+summary(bodyfat_gam)$r.sq
+
+
+#diagnostic plot
+layout(matrix(1:4, ncol = 2))
+gam.check(bodyfat_gam,col="navyblue")
+
+
+```
+
+    
+c) Fit the model below, note that some insignificant variables have been removed and some other variables are no longer smoothed. Report the summary, plot, GCV and AIC.
+      \begin{verbatim}
+        bodyfat_gam2 <- gam(DEXfat~ waistcirc + s(hipcirc) + 
+                     s(kneebreadth)+ anthro3a +
+                     s(anthro3c), data = bodyfat)
+      \end{verbatim}
+      
+      
+### Discussion
+
+Running the reduced model with few variables included we get a slightly better model than the first model we ran in part b. it's worth noting that the following variables are smoothing terms in this model:
+    -waistcirc
+    -kneebreadth
+    -anthro3c
+    
+while the following variables were used as linear effects:
+    -Intercept
+    -waistcirc
+    -anthro3a
+
+According to the p-values of the model statistics the intercept plays no statistically significant role. The plot also shows anthro3c and kneebreadth having knots corresponding to their effective degrees of freedom while hipcirc shows slightly linear line, this makes sense because hipcirc has only 1.6 effective degrees of freedom. So, I expected something in between a linear and a 2-order polynomial line. The GCV,AIC and total degrees of freedom  are lower at 7.946447, 343.2562, 17.52001 respectively. This indicates an overall improvement of the second model compared to our initial model.
+
+
+```{r}
+#fitting second model
+bodyfat_gam2 <- gam(DEXfat~ waistcirc + s(hipcirc) + 
+                     s(kneebreadth)+ anthro3a +
+                     s(anthro3c), data = bodyfat)
+
+
+#summary
+summary(bodyfat_gam2)
+
+
+#plot
+layout(matrix(1:4, ncol = 2))
+plot(bodyfat_gam2,shade = TRUE,
+     col = "black",
+     shade.col = "orange",
+     main = "Model2")
+
+
+#GCV
+bodyfat_gam2$gcv.ubre
+
+
+#AIC and total model degrees of freedom
+bodyfat_gam2$aic   
+sum(summary(bodyfat_gam2)$edf)
+
+
+#diagnostic plot
+layout(matrix(1:4, ncol = 2))
+gam.check(bodyfat_gam2,col="orange")
+
+```
+
+
+d) Again fit an additive model to the body fat data, but this time for a log-transformed response. Compare the three models, which one is more appropriate? (Hint: use AIC, GCV, residual plots, etc. to compare models).
+
+
+### Discussion
+
+This third model uses the same explanatory variables to assess their effect on the log-transformed response variable DEXfat. I started by creating a new column for the log transformed values of DEXfat in the original dataset and appended this column into the dataset. Running the summary statistics, we quickly notice that all the parametric coefficient are statistically significant in explaining the log-transformed response variable. However, in the smooth terms we see that hipcirc and anthro3c have extremely low p-values. This might be a bit of a concern because low p-values in the smooth terms means the residuals are not randomly distributed enough, hence not enough basis functions. Interestingly enough, we also see that adjusted R squared hasn't changed noticeably at 0.952 which means it only dropped by 0.02. The GCV, AIC and total degrees of freedom are respectively at 0.0088137,-136.47 and 12.59274. Furthermore, the residuals appear to be better following the line in the qq-plot, while the histogram showing better normally distributed residuals from the right skewness present in first and second models.Overall, the residual plots as well as the other assessments generally indicate an improved and more adequate model that does a better job at explaining the log-transformed response variable compared to the first and second models.
+
+
+
+```{r}
+#log transforming the response variable and adding to the data set
+Log.Transformed.Response <- log(bodyfat$DEXfat)
+new.dataset <- cbind (bodyfat, Log.Transformed.Response)
+
+#fitting the third model
+bodyfat_gam3 <- gam(Log.Transformed.Response ~ waistcirc + s(hipcirc) +
+                      s(kneebreadth) + anthro3a + s(anthro3c),data = new.dataset)
+
+#summary
+summary(bodyfat_gam3)
+
+
+#plot
+layout(matrix(1:4, ncol = 2))
+plot(bodyfat_gam3,shade = TRUE,
+     col = "black",
+     shade.col = "lightgreen",
+     main = "Model3")
+
+
+#GCV
+bodyfat_gam3$gcv.ubre
+
+
+#AIC and total model degrees of freedom
+bodyfat_gam3$aic   
+sum(summary(bodyfat_gam3)$edf)
+
+
+#diagnostic plot
+layout(matrix(1:4, ncol = 2))
+gam.check(bodyfat_gam3,col="navyblue")
+```
+
+    
+e) Run the code below to fit a generalised additive model that underwent AIC-based variable selection (fitted using the **gamboost()** function). What variable(s) was/were removed by using AIC? 
+      
+
+### Discussion
+
+This fourth model managed to not only reduce the AIC from 345 to 3.3 but it also managed to do so without dropping too many variables in the process. In the previous models, we removed variables we thought didn't have a lot of significance in explaining the response variable. This model used AIC ranking system to drop only what is necessary and so it the explanatory variable age was dropped. We learned from our part b of the assessment that age wasn't significant but we also dropped two other variables in the process. Ultimately, our third model shows lower AIC than this fourth model. But, it's interesting to note how much smoother and "parametric-like" for lack of a better term the plots have become.
+
+```{r}
+#importing dataset
+data("bodyfat")
+
+#gamboost model
+bodyfat_boost <- gamboost(DEXfat~., data = bodyfat)
+bodyfat_aic <- AIC(bodyfat_boost)
+bf_gam <- bodyfat_boost[mstop(bodyfat_aic)]
+
+
+#summary
+summary(bf_gam)
+
+
+#AIC
+bodyfat_aic
+
+
+#plot
+layout(matrix(1:9, ncol = 3))
+plot(bf_gam,col = "blue",
+     main = "Gamboost Model",
+     pch = 18)
+
+```
+
+
+2. (Ex. 10.3 pg 208 in HSAUR, modified for clarity) Fit an additive model to the **glaucomaM** data from the **TH.data** library with *Class* as the response variable. Read the description of the dataset and the goals of the experiment. Which covariates should be in the model and what is their influence on the probability of suffering from glaucoma? (Hint: Since there are many covariates, use **gamboost()** to fit the GAM.) Make sure to provide a written summary of the model you chose and your corresponding analysis.
+
+
+### Discussion
+
+After constructing a gamboost model and running its summary, it turns out the model selected only 18 out of 63 possible explanatory variables as statistically significant. Out of the selected variables:
+    -tmi
+    -mhcg
+    -vars
+    -mhci
+have the highest probability in predicting the onset of glaucoma. The partial effect plots look exceptionally smooth, so much that phcg and phci appear to be linear-effects.
+
+
+
+```{r}
+data("GlaucomaM")
+#head(GlaucomaM)
+#names(GlaucomaM)
+
+#gamboost model
+GlaucomaM_boost <- gamboost(Class~., data = GlaucomaM, family = Binomial())
+
+
+#summary-gamboost model
+summary(GlaucomaM_boost)
+
+
+#plot-gamboost model
+layout(matrix(1:4, ncol = 2))
+plot(GlaucomaM_boost,col = "blue",
+     main = "GlaucomaM Gamboost Model",
+     pch = 18)
+
+
+
+
+
+
+```
+
+
+
+###Works Cited
+
+
+1.Michael, Semhar, and Christopher P. Saunders. “Scatterplot Smoothers and GAM” Chapter 10. 18 Oct. 2020, South Dakota State University, South Dakota State University. 
+2.Everitt, Brian, and Torsten Hothorn. A Handbook of Statistical Analyses Using n SECOND EDITION. Taylor and Francis Group LLC, 2010.
+3.Jackson, Simon. “Visualising Residuals • BlogR.” BlogR on Svbtle, drsimonj.svbtle.com/visualising-residuals.
+4.Lowhorn, J. (n.d.). Retrieved October 21, 2020, from https://rstudio-pubs-static.s3.amazonaws.com/326465_9748350bbfca41afb753211eff074761.html

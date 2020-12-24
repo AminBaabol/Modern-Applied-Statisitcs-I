@@ -1,0 +1,624 @@
+---
+title: "Homework 8"
+author: "Amin Baabol"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+
+Note: Mohamed and I collaborated in producing this report. We worked together and verified each other's work on every part of this assignment.
+
+
+
+
+### Introduction:
+
+
+The purpose of this analyses is to apply median and linear regression analysis 
+to clouds data.Our goal is to to fit the models and compare them. The linear 
+regression model is from chapter 6.
+
+
+### Data and Model
+
+```{r}
+#Packages used
+library("HSAUR3")
+library("lattice")
+library("party")
+library("partykit")
+library("TH.data")
+library("ipred")
+library("rpart")
+library("ggplot2")
+library("ggdendro")
+library("quantreg")
+library("gridExtra")
+```
+
+
+
+The data that was used for this analysis is clouds data from the HSAUR3 package.
+The data contains information such as each seeding, time, and sne.These variables 
+will be used to conduct our analysis. The table below lists all the variables,
+form the HSAUR3 data set, along with their description.
+
+  &nbsp; | Symbol         | Description
+  -------|----------------|--------------------------------------
+  &nbsp; | $seeding$      | a factor indicating whether seeding action occurred (no or yes).
+  &nbsp; | $Time$         | number of days after the first day of the experiment.    
+  &nbsp; | $sne$          | suitability criterion.
+  &nbsp; | $cloudcover$   | the percentage cloud cover in the experimental area, measured using radar.
+  &nbsp; | $prewetness$   | the total rainfall in the target area one hour before seeding (in cubic meters times 1e+8).
+  &nbsp; | $echomotion$   | a factor showing whether the radar echo was moving or stationary.
+  &nbsp; | $rainfall$     | the amount of rain in cubic meters times 1e+8.
+  ---------------------------------------------------------------
+
+
+
+A median regression model will be built using the rq function and another linear
+regression model will be built, for the same data, then results will be compared
+to choose which analysis is more suitable for the Clouds data.
+
+
+### Results
+
+
+
+Apply a median regression analysis on the **clouds** data. Compare this to 
+the linear regression model from Chapter 6. Write up a formal summary of the 
+two analyses and provide a justified recommendation on which analysis the 
+researcher should be using.
+
+
+
+First, we built a linear a regression model using all explanatory variables.
+We can see that there is few predictors that are significant with P-Value < 0.5.
+Those significant predictors are seeding yes & seeding yes:sne. This also means 
+that seeding along with high or low S-Ne values affects rainfall.The linear 
+model shows that seeding and and S-Ne criterion are the most influential 
+explanatory variables on rainfall. We built a median regression model using the
+explanatory variables that were found to be significant in the linear regression 
+model. The model’s intercept is 8.86 and the intercept’s confidence intervals 
+values are (3.14768 14.86666). Also, S-Ne coefficient value is -1.38667 and its 
+confidence intervals values are (-2.46926 0.13118).
+  
+```{r}
+data("clouds")
+head(clouds)
+
+# A linear regression model
+clouds_formula <- rainfall ~ seeding +
+  + seeding:(sne + cloudcover + prewetness + echomotion) +
+  + time
+
+
+clouds_lm <- lm(clouds_formula, data = clouds)
+cat("Linear Regression Model with all explantory variables")
+
+
+## Linear Regression Model with all explantory variables
+
+summary(clouds_lm)
+
+
+clouds_lm2 <- lm(rainfall ~ sne, data=clouds)
+cat("Linear Regression Model with S-Ne as a predictor")
+
+
+## Linear Regression Model with S-Ne as a predictor
+
+summary(clouds_lm2)
+
+
+# A median regression model
+median.model <- rq(rainfall ~ sne, data = clouds, tau = 0.5)
+cat("Median Regression Model")
+
+
+## Median Regression Model
+summary(median.model)
+
+
+## Plotting the models using base R
+layout(matrix(1:2,ncol=2))
+psymb <- as.numeric(clouds$seeding)
+plot(rainfall ~ sne,
+     data = clouds,
+     pch = psymb,
+     xlab = "S-NE Criterion",
+     ylab = "Rainfall",
+     main = "Linear Regression Plot")
+abline(lm(rainfall ~ sne,
+          data = clouds,
+          subset = seeding == "no"))
+abline(lm(rainfall~ sne,
+          data = clouds,
+          subset = seeding == "yes"),
+          lty = 2)
+legend("topright",
+       legend = c("No seeding", "Seeding"),
+       pch = 1:2,
+       lty = 1:2,
+       bty = "n")
+plot(rainfall ~ sne,
+     data = clouds,
+     pch = psymb,
+     xlab = "S-NE Criterion",
+     ylab = "Rainfall", main = "Median Regression Plot")
+abline(rq(rainfall ~ sne,
+          data = clouds,
+          tau = 0.50,
+          subset = seeding == "no"))
+abline(rq(rainfall ~ sne,
+          data = clouds,
+          tau = 0.50,
+          subset = seeding == "yes"),
+          lty = 2)
+legend("topright",
+       legend = c("No seeding", "Seeding"),
+       pch = 1:2,
+       lty = 1:2,
+       bty = "n")
+```
+
+
+
+The linear regression plot shows that smaller S-Ne values along with seeding 
+causes more rainfall than when seeding is not implemented. However, When we have 
+high S-Ne values, the plot shows that we get less rainfall. The point where where 
+both lines intersect is S-Ne of Four which indicates that rainfall can be 
+maximized by applying seeding with S-Ne values lower than four. We can see that 
+seeding is a better fit than when seeding is not used. Overall, rainfall with 
+seeding and without seeding has a negative slope indicating that the overall 
+trend is lower rainfall amount with higher SN-e values.
+
+The median regression Plot shows that that lower S-Ne when seeding is implemented 
+cause more rainfall than when seeding is implemented. Even with high S-Ne values 
+and no seeding, rainfall levels are lower than rainfall levels when seeding is 
+used. Unlike the linear regression, the median regression shows a positive slope 
+when seeding is not implemented. When seeding is not implemented and negative 
+slope when seeding is implemented.
+
+
+
+
+```{r}
+# Plotting the model Using ggplot
+l.plot <- ggplot(data = clouds,
+                 aes(x = sne,
+                     y = rainfall,
+                     col = seeding)) +
+  geom_point() +
+  geom_smooth(method = "lm",se = FALSE) +
+  labs(title = "Linear Regression Plot",
+       x = "S-NE",
+       y = "Rainfall")
+m.plot <- ggplot(data = clouds,
+                 aes(x = sne,
+                     y = rainfall,
+                     col = seeding)) +
+  geom_point() +
+  labs(title = "Median Regression Plot",
+       x = "S-NE",
+       y = "Rainfall") +
+  stat_quantile(quantiles = c(0.5), method = "rq")
+grid.arrange(l.plot, m.plot, ncol = 2)
+
+```
+
+
+
+### Conclusion
+
+
+Median regression is sometimes performs better than linear regression because it 
+is robust to outliers. linear regression estimates the conditional mean function 
+as a linear combination of the predictors where median regression estimates 
+these conditional median function as a linear combination of the predictors. 
+In the linear regression model, It looks like that no seeding line is affected 
+by outliers and, in general, there is high variability in the data, therefore 
+we conclude that median regression is more suitable for the data.
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Title
+
+
+"Understanding Bodyfat Using Predictive Regressions"
+
+
+
+### Introduction
+
+
+The goal of this assignment is to understand the various factors that influence
+the bodyfat.In order to accomplish this task we will reanalyze and compare the **bodyfat**
+data from the **TH.data** package using two different predictive regression methods.
+Throughout the duration of this analysis we will:
+    a) Compare the regression tree approach from chapter 9 of the textbook to median
+    regression and summarize the different findings.
+    b) Choose one independent variable. For the relationship between this variable
+    and DEXfat, create linear regression models for the 5%, 10%, 90%, and 95% quantiles.
+    Plot DEXfat vs that independent variable and plot the lines from the models on the graph. 
+
+
+
+
+### Methodology
+    
+    
+Given the complexity of the explanatory terms,  it is clear there is no direct linear
+relationship between the dependent variable DEXfat and the other independent variables.
+Hence, our approach to better understand what factors influence response variable is to 
+utilize one of the non-parametric methods. Specifically, we would like to employ
+decision tree regression method to reanalyze the response variable. Normally we would
+split the original dataset into two subsets. One for training the model and the other
+for  testing the accuracy of the model. However, in order to save time we will not be
+testing the accuracy of the model, instead we will prune the decision tree model using
+the original data and this should fairly be enough to prevent the model from
+over-fitting.Furthermore, it is fair to point out that this decision tree model is 
+built using binary recursive partitioning using **rpart()** in the **rpart**. 
+This iterative process will iteratively split the data into branches while minimizing 
+the sum of squared deviation from the mean.This process will continue until it each node 
+finally gets to the minimum split and the node becomes a terminal.This method should 
+systematically weed out the unnecessary explanatory variables.
+
+
+Next, we set up a median regression model to reanalyze the same response variables from
+the same datset. Median regression is a quantile regression where tau is set to 0.50.
+We will build this median regression model using the **rq()** function in in the **quantreg**
+package. This particular method will attempt to estimate the quantile function of the
+response variable "DEXfat" as a linear combination of the explanatory variables.The conditional
+quantile we will impose on this quantile regression is 0.50. It is worth noting that this 
+median regression is exceptionally robust to outliers since it is the 50th quantile regression.
+We will not be making assumptions  for this median quantile regression because we are 
+treating this model like the non-linear, non-parametric it is. Making linear quantile 
+regression assumptions defeats the purpose of the median regression. We are not interested
+in finding the mean, we are interested in estimating how much the explanatory variables
+explain the dependent variable "DEXfat" on a specified quantile which is the 50 percentile.
+    
+
+Furthermore,upon successfully constructing and running the models we will compare the decision
+tree regression model and the median quantile regression model. There are two things we will 
+ultimately compare, the fitted versus the observed plots and the mean squared erros of each model.
+The implication here is that the fitter model will have more accurate plots and lower mean
+squared error value. Having done this part, we will move one to the last section. This section
+we will construct a linear quantile regression models for the 5%, 10%, 90% and 95% and then
+compare there plots with interpretations.
+    
+
+
+
+### Results
+
+    
+2. Reanalyze the **bodyfat** data from the **TH.data** package. 
+
+a) Compare the regression tree approach from chapter 9 of the textbook to median regression and summarize the different findings.
+
+
+We began the analysis by fitting a decision tree model, we then printed the cp 
+table to check whether it pruning might be necessary or not. According to the cp 
+table an nplit of 7 will yield the lowest error of 0.2574097. We then built a pruned 
+decision tree model using the **prune()** function. As indicated by figure 2.1a 
+and figure 2.1b there is no need for pruning because both the pruned model and 
+the original decision tree model have the same splits. According to figure 2.2a and 2.2b
+the pruned decision tree model shows a stepwise plot where as the median regression 
+model shows a fairly linear plot which is not is not entirely unexpected. It went
+further and plotted the residuals of both models to check their distributions.
+Figure 2.3a and figure 2.3b both have residuals that are randomly distributed
+in and around 0 with a margin of error though the median regression model's 
+residuals have wider margin.Finally, we computed the mean squared error of both
+model, it turns out the pruned decision tree model has mse of 10.1705	whereas the
+median regression model has mse of 15.0245. Taking all those outputs mentioned above
+the pruned decision tree will yield the better results in the context of mean squared error.
+
+```{r}
+data("bodyfat")
+
+
+#Regression tree approach
+#Fitting the model
+set.seed(1234)
+Regression.Tree <- rpart(DEXfat ~ age + 
+                         waistcirc + 
+                         hipcirc + 
+                         elbowbreadth + 
+                         kneebreadth, data = bodyfat,
+                         control = rpart.control(minsplit = 10))
+
+
+#Plot the initial decision tree model 
+plot(main = "Figure 2.1a: Non-Pruned Decision Tree Model",
+     as.party(Regression.Tree), 
+     gp = gpar(fontsize = 8), 
+     tp_args = (list(id = FALSE)))
+
+#Locating the lowest cp to see if it needs pruning
+opt <- which.min(Regression.Tree$cptable[,"xerror"])
+cp <- Regression.Tree$cptable[opt, "CP"]
+#opt
+
+#printing the cp table
+#print(Regression.Tree$cptable)
+
+
+
+#Plot the CP Table 
+plotcp(Regression.Tree,
+       main = "CP vs. Error",
+       col = "darkred",
+       cp = 19)
+
+
+#constructing a pruned regression tree model using the extracted cp
+Pruned.Regression.Tree <- prune(Regression.Tree, cp = cp)
+
+
+#Pruned regression tree model summary
+summary(Pruned.Regression.Tree)
+
+#Plot the pruned regression tree model 
+plot(main = "Figure 2.1b:Pruned Decison Tree Model",
+     as.party(Pruned.Regression.Tree), 
+     gp = gpar(fontsize = 8), 
+     tp_args = (list(id = FALSE)))
+
+
+
+
+
+
+#Predicting DEXfat using the pruned regression tree model
+Pruned.RegressionTree.Predict <- predict(Pruned.Regression.Tree,
+                                    newdata = bodyfat)
+
+
+#Median Quantile Regression
+
+
+#Fitting the median Regression model
+Median.Regression.Model <- rq(DEXfat ~ age +
+                                  waistcirc +
+                                  hipcirc +
+                                  elbowbreadth +
+                                  kneebreadth,
+                                  data=bodyfat,
+                                  tau = 0.50)
+Median.Regression.Model
+
+#Median regression model summary
+summary(Median.Regression.Model)
+
+
+#Predicting DEXfat using the median regression model
+Median.Regression.Predict <- predict(Median.Regression.Model,
+                                     newdata = bodyfat)
+
+
+
+
+#Plot the predicted values of the pruned regression tree model
+plot(Pruned.RegressionTree.Predict ~ DEXfat,
+     data = bodyfat,
+     xlab = "Observed", 
+     ylab = "Predicted",
+     ylim = range(bodyfat$DEXfat),
+     xlim = range(bodyfat$DEXfat),
+     main = "Figure 2.2a:Pruned Regression Tree Predicted vs. Observed",
+     col = "navyblue")
+abline(a = 0, b = 1)
+
+
+
+#Plot the predicted values of the median regression model
+plot(Median.Regression.Predict ~ DEXfat,
+     data = bodyfat,
+     xlab = "Observed", 
+     ylab = "Predicted",
+     ylim = range(bodyfat$DEXfat),
+     xlim = range(bodyfat$DEXfat),
+     main = "Figure 2.2b:Median Regression Predicted vs. Observed",
+     col = "darkred")
+abline(a = 0, b = 1)
+
+
+
+#Residuals comparison
+#Extract the residuals and the coefficients
+Median.Regression.Res <- resid(Median.Regression.Model)
+Pruned.RegressionTree.Res <- resid(Pruned.Regression.Tree)
+
+#Regression Tree Residuals
+plot(Pruned.RegressionTree.Res,
+     main = "Figure 2.3a:Pruned Regression Tree Model Residuals")
+
+#Median Regression Residuals
+plot(Median.Regression.Res,
+     main = "Figure 2.3b:Median Regression Model Residuals")
+
+
+
+#Create a dataf rame to store the observed, predicted and sse values of the pruned regression tree model
+Actual <- bodyfat$DEXfat
+Predicted.Prune <- Pruned.RegressionTree.Predict
+SSE.Prune <- (Actual - Predicted.Prune)^2
+
+
+
+#create a data frame to store the observed, predicted and sse values of the median regression model
+Predicted.Median <- Median.Regression.Predict
+SSE.Median <- (Actual - Predicted.Median)^2
+
+
+
+#Pruned decision tree
+Pruned.Model.Table <- data.frame(Actual,Predicted.Prune,SSE.Prune)
+#head(Pruned.Model.Table)
+
+
+#Median regression 
+Median.Model.Table <- data.frame(Actual,Predicted.Median,SSE.Median)
+#head(Median.Model.Table)
+
+
+#Calculating the MSE of both models
+Pruned.RegressionTree.MSE <- mean(Pruned.Model.Table$SSE.Prune)
+Median.Regression.MSE <- mean(Median.Model.Table$SSE.Median)
+
+
+#Constructing a vector/table for the MSE of both models
+MSE <- data.frame(Pruned.RegressionTree.MSE,Median.Regression.MSE)
+names(MSE) <- c("Regression Tree Model MSE", "Median Regression Model MSE")
+
+MSE
+
+
+
+
+
+```
+
+b) Choose one independent variable. For the relationship between this variable and DEXfat, create linear regression models for the 5%, 10%, 90%, and 95% quantiles. Plot DEXfat vs that independent variable and plot the lines from the models on the graph. 
+
+
+We printed the summary of the median regression model along with the p-values 
+of each independent variable to see which ones are important. According to the 
+model summary there are only three parameters that are significant at the 0.05 level.
+Those parameters include the intercept, waist circumference and hip circumference.
+ignoring the intercept we see that hip circumference has the lowest p-value of 0.00003 
+and the largest t-value of 4.45177 which we presumed to be highly important 
+independent variable.We could have just easily have chose waist circumference too 
+but we decided to with hip circumference the reasons mentioned above.
+
+We plotted the linear regression model to understand the relationship between
+our independent variable hip circumference and the response variable DEXfat.
+Additionally, we added the quantile regression lines for the 5%, 10%,90% and 95%.
+After carefully studying the final plots, it is interesting to note that the 
+intensity of the coefficient of the explanatory variable changes with different
+quantile values. At the 5% the slope of the independent variable is 0.8721106
+compared to when tau is 0.10 the slope drops to 0.840, then picks back up to 
+1.162125 at the 90% and then slightly drops down again to 1.113333 at the 95%.
+The plots of the regression lines also seem to be supporting this. The 95% indicated
+by the red line seems to be much steeper than the 5% indicated by the purple line.
+The variance of the residual does not stay constant due to the heteroscedasticity.
+
+```{r}
+#Choosing an independent variable using the p-value
+summary(Median.Regression.Model, se = "nid")
+
+#hip circumference has the lowest p-value
+
+#Fitting the quantile regression
+Quantile.Regression <- rq(DEXfat ~ hipcirc,
+                          data = bodyfat,
+                          tau = c(.05,.10,.90,.95))
+
+
+#Coefficient intensity
+coef(Quantile.Regression)
+
+
+#Plot the linear regression model with all the quantiles inlcuded
+
+
+#Base R
+plot(DEXfat ~ hipcirc,
+     main = "DEXfat  vs.  Hip Circumference: Base R",
+     xlab = "Hip Circumference",
+     ylab = "DEXfat",
+     col = "black",
+     pch = 19,
+     data = bodyfat)
+abline(rq(DEXfat ~ hipcirc,
+          data = bodyfat,
+          tau = 0.05),
+          col = "purple")
+abline(rq(DEXfat ~ hipcirc,
+          data = bodyfat,
+          tau = 0.10),
+          col = "orange")
+abline(rq(DEXfat ~ hipcirc,
+          data = bodyfat,
+          tau = 0.90),
+          col = "blue")
+abline(rq(DEXfat ~ hipcirc,
+          data = bodyfat,
+          tau = 0.95),
+          col = "red")
+legend("bottomright",
+       legend = c("5% Quantile",
+                  "10% Quantile",
+                  "90% Quantile",
+                  "95% Quantile"),
+       fill = c("purple",
+                "orange",
+                "blue",
+                "red"))
+
+
+#ggplot version
+ggplot(data = bodyfat, aes(x = hipcirc, y = DEXfat)) +
+  geom_point() + 
+  stat_quantile(quantiles = c(.05),
+                method = 'rq',
+                aes(colour = '5%')) +
+  stat_quantile(quantiles = c(.10),
+                method = 'rq',
+                aes(colour = '10%')) + 
+  stat_quantile(quantiles = c(.90),
+                method = 'rq',
+                aes(colour = '90%')) +
+  stat_quantile(quantiles = c(.95),
+                method = 'rq',
+                aes(colour = '95%')) +
+  labs(title = "DEXfat  vs.  Hip Circumference: ggplot",
+       x = "Hip circumference",
+       y = "DEXfat") +
+  scale_color_manual(name = "Quantile Percent",
+                     values = c("5%" = "purple",
+                                "10%" = "orange",
+                                "90%" = "blue",
+                                "95%" = "red"))
+```
+
+
+
+
+### Conclusion
+
+
+The purpose of our report was to properly comprehend in a meaningful way the relationship
+between bodyfat and a host of other variables contained the in the **bodyfat** in 
+**TH.data** package. In effort to accurately accomplish this goal we also compared
+decision tree model and a median quantile regression model to understand how these two
+models perform in establishing a relationship between the response variable "DEXfat" and 
+the independent variables. Although in the end decision tree model had the lower
+mse of 10.1705 while the median regression has mse of 15.0245,however, each model
+has it is strengths and weaknesses. 
+
+
+
+
+### Works Cited
+
+1.Michael, Semhar, and Christopher P. Saunders. “Survival Analysis Introduction” Chapter 12. 30 Oct. 2020, South Dakota State University, South Dakota State University. 
+2.Everitt, Brian, and Torsten Hothorn. A Handbook of Statistical Analyses Using n SECOND EDITION. Taylor and Francis Group LLC, 2010.
+3.Neupane, Achal.“Survival Analysis” Achal Neupane,30 Oct.2019,achalneupane.github.io/achalneupane.github.io/post/quantile_regression/
+

@@ -1,0 +1,430 @@
+---
+title: "Amin Baabol"
+output:
+  word_document: default
+  pdf_document: default
+date: "November 6th, 2020"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+
+
+Note: Mohamed and I collaborated in producing this report. We worked together and verified each other's work on every part of this assignment.
+
+
+```{r}
+#packages 
+library("HSAUR3")
+library("coin")
+library("multcomp")
+library("sandwich")
+library("lme4")
+
+```
+
+
+
+## Exercises
+
+1. (Question 15.1 on pg. 295 in HSAUR, modified for clarity) Consider **alpha** 
+dataset from the **coin** package. Compare the results when using **glht**  and 
+TukeyHSD (Refer to Chapter 5 for TukeyHSD). 
+
+
+
+
+### Discussion
+
+
+We began our multiple comparisons by sorting the alpha data into a table
+and creating levels for the different allele lengths. In order to use the glht()
+function we needed to fit anova model using the aova() function.
+
+
+According to the f-test of the anova model in figure 1a, there is no significant
+differences between the expression levels of the various allele lengths.This is 
+further confirmed by the general linear hypothesis test using the ordinary covariance
+matrix as indicated by figure 1b. At this point,it is necessary to check the
+the variance homogeneity. Thus, we plotted the mean differences of the expressions
+levels of the allele lengths,which clearly indicates that the variance homogeneity 
+is violated.Therefore, we must implement the "sandwich" estimator of the covariance
+matrix.This sandwich estimator will account for the heterogeneity in the mean differences.
+
+
+Figure 1b and figure 1c are two versions of the glht model, the former uses the 
+"ordinary" tukey's,while the latter and the more accurate one uses the sandwich 
+estimator.According to the glht with the sandwich estimator, there is a significant difference between the mean expression levels of the long and short allele lengths
+of at least 1.1888.The p-value of this partial hypothesis is 0.0226 as indicated 
+by figure 1c.
+
+
+Further more, we ran a tukey's honest significant difference test on our anova 
+model. According to the summary in figure 1d and its corresponding plot there is no 
+significant difference between the mean expression levels of the various allele 
+lengths. The lowest adjusted p-value for the mean expression levels of the allele 
+lengths is 0.0628589 where as the glht model with the sandwich estimator has a 
+p-value of 0.0226. Therefore, the "sandwich" glht() method is more reliable and 
+accurate than the tukeyHSD() method in the presence of unbalanced data and when 
+the variance homogeneity rule is violated.
+
+
+```{r}
+data("alpha")
+head(alpha)
+
+
+
+#sorting the alpha data into proper former
+n <- table(alpha$alength)
+levels(alpha$alength) <- abbreviate(levels(alpha$alength))
+
+
+#Create anova model using aov
+alpha.data.aov <- aov(elevel ~ alength, data = alpha)
+paste("Figure 1a: F-test")
+summary(alpha.data.aov)
+
+#plot to check variance homogeneity
+plot(elevel ~ alength,
+     data = alpha,
+     varwidth = TRUE,
+     main = "Expression Level vs. Allele Length",
+     ylab = "Expression Level", 
+     xlab = "NACP-REP1 Allele Length")
+
+
+#General linear hypothesis test using the above anova model
+alpha.data.glht <- glht(alpha.data.aov,
+                        linfct = mcp(alength = "Tukey"))
+
+
+#Summary of the glht model
+paste("Figure 1b:glht(ordinary) summary")
+summary(alpha.data.glht)
+
+
+paste("glht(ordinary) coefficients")
+coef(alpha.data.glht)
+
+
+paste("glht(ordinary) covariances matrix")
+vcov(alpha.data.glht)
+
+#variance homogeneity is violated
+
+
+#Create a sandwich estimator glht model
+alpha.data.glht.sw <- glht(alpha.data.aov,
+                           linfct = mcp(alength = "Tukey"),
+                           vcov = sandwich)
+
+
+paste("Figure 1c:glht(sandwich) summary")
+summary(alpha.data.glht.sw)
+
+
+paste("glht(sandwich) coefficients")
+coef(alpha.data.glht.sw)
+
+
+paste("glht(sandwich) covariances matrix")
+vcov(alpha.data.glht.sw)
+
+
+#plot comparison between the ordinary and the sandwich glht models
+par(mai = par("mai") * c(1,1.5,2))
+layout(matrix(1:2, ncol = 2))
+plot(alpha.data.glht,
+     xlim = c(-0.6, 2.6),
+     main = "glht(ordinary) ",
+     xlab = "Difference",
+     ylim = c(0.5, 3.5))
+plot(alpha.data.glht.sw,
+     xlim = c(-0.6, 2.6),
+     main = "glht(sandwich)",
+     xlab = "Difference",
+     ylim = c(0.5, 3.5))
+
+
+#TukeyHSD 
+alpha.data.hsd <- TukeyHSD(alpha.data.aov)
+
+paste("Figure 1d:TukeyHSD summary")
+alpha.data.hsd
+
+
+#Plot TukeyHSD model
+plot(alpha.data.hsd)
+
+
+```
+
+
+2. (Question 15.2 on pg. 296 in HSAUR, modified for clarity) Consider **clouds** 
+data from **HSAUR3** package
+
+a. Read and write a report (no longer than one page) on the clouds data given in 
+Chapter 15 section 15.3.3 from HSAUR Ed 3.
+
+
+
+### Data
+
+
+Cloud seeding is a practice done to influence the weather,typically to increase precipitation or reduce hail, fog, or ice in high traffic areas such as airports
+and busy inter-states.The **Clouds** dataset was collected in an experiment that 
+was conducted in Florida in 1975 to probe the use of large-scale silver iodide 
+in individual cloud seeding to increase rainfall. The data contains details about
+cloud treatments with organic and inorganic materials, days the treatment was applied, suitability criterion(SNE), and other data that was collected in the experiment.
+Since the data is small, we can use it to evaluate the variability of the estimated regression line. 
+
+
+
+### Method
+
+
+We first fitted a linear model to see if there is a linear relationship between
+the independent variable suitability criterion(SNE) and the response variable
+rainfall.We want to calculate the confidence interval region that has a probability 
+$ => 1 – α$,for the estimated regression line. To do that, we used the **Pointwise ** method, but we want to control TYPE I error for all predictors simultaneously.
+Therefore,the alternative method would be to restructure the linear model to include 
+linear combination of the regression coefficients. Matrix K will be multiplied 
+by $θ$ which represents coefficients $β0, β1$ of interest which will make up the
+confidence interval for the fitted regression line. Finally, we plot two different 
+graphs to observe the confidence bands for the rainfall when seeding is implemented 
+and when seeding is not implemented. 
+
+
+
+```{r}
+data("clouds")
+#head(clouds)
+
+confband <- function(subset, main) {
+mod <- lm(rainfall ~ sne, data = clouds, subset = subset)
+sne_grid <- seq(from = 1.5, to = 4.5, by = 0.25)
+K <- cbind(1, sne_grid)
+sne_ci <- confint(glht(mod, linfct = K))
+plot(rainfall ~ sne, data = clouds, subset = subset,
+xlab = "SNE criterion", main = main,
+ylab = "Rain fall",
+xlim = range(clouds$sne),
+ylim = range(clouds$rainfall))
+abline(mod)
+lines(sne_grid, sne_ci$confint[,2], lty = 2)
+lines(sne_grid, sne_ci$confint[,3], lty = 2)
+}
+
+
+```
+
+
+### Results 
+
+
+The linear regression plot shows that smaller S-Ne values along with seeding 
+causes more rainfall than when seeding is not implemented. However, when we have 
+high S-Ne values, the plot shows that we get less rainfall. The point where both 
+lines intersect when SNE of 4 which indicates that rainfall can be maximized by 
+applying seeding with SNE values lower than 4.Furthermore, the plots shows that we have 
+more uncertainty in the regression line when seeding is not implemented than when 
+seeding is implemented.This uncertainty is due to the substantial variability in 
+the observations when seeding is not implemented. Since we have more certainty in 
+seeding's true regression lines, we can conclude that seeding is a better fit than 
+when seeding is not used up until SNE value of 4 at which point no seeding will
+yield more rainfall.
+
+
+```{r}
+paste("Figure 2a")
+layout(matrix(1:2, ncol = 2))
+confband(clouds$seeding == "no", main = "No Seeding")
+confband(clouds$seeding == "yes", main = "Seeding")
+
+
+
+
+
+#Plot: seeding vs no seeding with respect to SNE
+seeding.dat <- as.numeric(clouds$seeding)
+plot(rainfall ~ sne,
+     ylab = "Rainfall",
+     xlab = "SNE",
+     data = clouds,
+     pch = seeding.dat)
+abline(lm(rainfall ~ sne, data = clouds,
+          subset = seeding == "no"))
+abline(lm(rainfall ~ sne, data = clouds,
+          subset = seeding == "yes"), lty = 2)
+legend("topright", legend = c("No seeding", "Seeding"),
+       pch = 1:2, lty = 1:2, bty = "n")
+
+```
+
+
+
+
+b. Consider the linear model fitted to the clouds data as summarized in Chapter 6,
+Figure 6.5. Set up a matrix K corresponding to the global null hypothesis that all interaction terms present in the model are zero. Test both the global hypothesis 
+and all hypotheses corresponding to each of the interaction terms. 
+
+```{r}
+data(clouds)
+
+#Fitting a linear regression model 
+clouds_formula <- rainfall ~ seeding + 
+  seeding:(sne + cloudcover + prewetness + echomotion) + time
+
+clouds.model <- lm(clouds_formula, data = clouds)
+
+
+
+fitted.model <- fitted(clouds.model)
+residuals.model <- residuals(clouds.model)
+
+
+#Checking the goodness fit of the model
+#Fitted vs Residuals
+#qqnorm plot to check if normality assumption is violated
+
+
+paste("Figure 2b")
+layout(matrix(1:2, ncol = 2))
+plot(fitted.model, residuals.model,
+     xlab = "Fitted values",
+     ylab = "Residuals",
+     type = "n",
+     ylim = max(abs(residuals.model)) * c(-1, 1))
+abline(h = 0, lty = 2)
+text(fitted.model, residuals.model, labels = rownames(clouds))
+qqnorm(residuals.model,
+       ylab = "Residuals")
+qqline(residuals.model)
+
+
+```
+
+
+### Discussion
+
+
+We fit the linear regression model from chapter 6 and created matrix K with all 
+of the interaction terms equal to zero. Then, we tested the global null hypotheses
+and the null partial hypotheses corresponding to each of the interaction terms using 
+the **glht** function. The global hypotheses test is significant with p-value 
+**0.02430934 < 0.05**. All hypotheses corresponding to each of the interaction 
+terms were tested while set to zero. All the interaction term were insignificant 
+at level of 0.05 except for for **seedingyes** with p-value **0.0293 < 0.05**. 
+
+
+
+```{r}
+#K Matrix 
+K <- cbind(0, diag(length(coef(clouds.model)) - 1))
+rownames(K) <- names(coef(clouds.model))[-1]
+# General Linear Hypotheses
+test <- glht(clouds.model, linfct = K)
+
+
+#Testing the global hypothesis using multi-linear regression
+paste("Simple multi-linear regression")
+summary(clouds.model)
+
+
+#Testing the global hypothesis using glht() with interaction parameters set to 0
+paste("General linear hypothesis test")
+summary(test)
+
+
+
+```
+
+
+
+
+c. How does adjustment for multiple testing change which interactions are significant?
+
+
+### Discussion
+
+
+According to the multi-linear regression summary the interaction terms seedingyes
+and seedingyes:sne are significant at the 0.05 confidence interval level.seedingyes
+is the critically significant parameter in explaining rainfall followed seedingyes:sne.
+On the other hand, the multiple comparison testing raised the p-values of the
+interaction terms, thus changing their significance levels. According to the 
+glht model, only seedingyes with an adjusted p-value of 0.0296 is significant at
+the 0.05 alpha level which makes sense because glht is comparing partial hypothesis
+between pairs. 
+
+Given the small sample size of the original clouds dataset the multi-linear r
+egression model is susceptible to outlier influences.To check the validity of the
+simple linear model we check the fitted values against the residual and also checked 
+the normality assumption through normal qq-plot. According to figure 2b,there are 
+a couple of outliers that might be influencing the model performance.Practically 
+speaking, if we were to only use the multi-linear regression model it is best to 
+re-run the model with those out-liers removed to check if the model results improve.
+However, due to the rebustness against outliers of the multiple comparison testing 
+method we can safely deduce that that seedingyes is the most important parameter 
+in explaining the response variable rainfall.
+
+
+
+
+
+
+3. (Question 15.3 on pg. 296 in HSAUR, modified for clarity) or the logistic 
+regression model presented in Chapter 7 in Figure 7.7, perform a multiplicity 
+adjusted test on all regression coefficients (except for the intercept) being zero. 
+Do the conclusions drawn in Chapter 7 remain valid?
+
+
+
+### Discussion
+
+
+First,the Glm model shows that the interaction terms and the intercept are highly significant at level of **0.05**. The next step was to compare different variables 
+that have different levels. We defined the contrast of interest and a ran generalized 
+linear hypothesis test using the **glht** model object. We want to test the difference between the interaction terms. After running the model, it looks like that all the coefficients are significant with **p-value < 0.05**. Therefore, we conclude that 
+chapter 7 conclusion remains valid at significance level of 0.05.
+
+
+```{r}
+data(womensrole)
+
+fm2 <- cbind(agree,disagree) ~ gender*education
+
+womensrole_glm_2 <- glm(fm2, data=womensrole, family=binomial())
+summary(womensrole_glm_2)
+
+
+
+#MATRIX 
+mat.rix <- cbind(0, diag(length(coef(womensrole_glm_2))-1))
+#Renaming the columns 
+rownames(mat.rix) <- names(coef(womensrole_glm_2))[-1]
+#
+glht.O <- glht(womensrole_glm_2, linfct=mat.rix)
+#printing summary 
+summary(glht.O)
+
+```
+
+
+### Works Cited
+
+
+Michael, Semhar, and Christopher P. Saunders. “Simultaneous Inference and Multiple Comparisons” Chapter 15.8 Nov. 2020, South Dakota State University, South Dakota State University.
+
+Michael, Semhar, and Christopher P. Saunders. “Analysis of Variance: Chapter 5 Review” Chapter 5.8 Nov. 2020, South Dakota State University, South Dakota State University.
+
+Everitt, Brian, and Torsten Hothorn. A Handbook of Statistical Analyses Using n SECOND
+EDITION. Taylor and Francis Group LLC, 2010.
+
+Hothorn, T., &amp; Everitt, B. S. (n.d.). A Handbook of Statistical Analyses Using R — 3rd Edition. Retrieved 2020, from http://cran.uni-muenster.de/web/packages/HSAUR3/vignettes/Ch_simultaneous_inference.pdf
+
+
+

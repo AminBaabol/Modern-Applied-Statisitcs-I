@@ -1,0 +1,417 @@
+---
+title: "Homework #10"
+author: "Justin Robinette"
+date: "October 30, 2018"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+*No collaborators for any problem*
+
+```{r}
+library(HSAUR3)         #datasets
+library(gee)            #generalized estimation equations
+library(lme4)           #lmer function
+library(stats)          #statistical functions
+library(MESS)           #misc functions
+library(knitr)          #kable functions
+library(data.table)     #data table functionality
+library(ggplot2)        #data visualization
+library(reshape2)       #data manipulation
+library(geepack)        #geeglm function for QIC
+library(Matrix)         #confusion matrix
+library(vcd)            #mosaic plot
+library(dplyr)          #data manipulation
+library(multcomp)       #cftest
+```
+
+**Problem #1, Part A:** Consider the **respiratory** data from the **HSAUR3** package. Investigate the use of other correlation structures than the independence and exchangeable structures used in the text for the respiratory data. 
+
+**Results:** For this exercise, I investigated the use of the *'AR-M'*, and *'unstructured'* correlation structures within the gee model. I chose these two models because, in the next exercise, I will explore QIC through the use of **geeglm** which works with these two correlation structures. 
+
+**Figure 1.1a** and **Figure 1.1b** show the coefficient values and P-Values of the *Auto Regressive* correlation structure. **Figure 1.1b** shows that *treatment*, *centre*, and *baseline* are statistically significant predictor variables. **Figure 1.1a** shows an increase in SE values when going from naive to robust.
+
+**Figure 1.2a** and **Figure 1.2b** are constructed the same as the prior set, this time examining the *Unstructured* correlation structure. Here, each pair of observations is allowed to have a different correlation. **Figure 1.2a** shows a better (smaller) change when going from glm to robust. Another major change in this structure is that *centre* is no longer a statistically significant predictor variable at alpha = 0.05.
+
+**Figure 1.3** and **Figure 1.4** summarize the p-value tables, for both *naive (glm)* and *robust sandwich*, of each predictor based on the correlation structure used in the model. An alpha value of 0.05 is indicated on each plot for convenience. Bar plots below the line indicate the variable is a significant predictor of *respiratory status* in the model. As we can see in **Figure 1.4**, in the *Unstructured* model *centre*'s p-value is greater than the alpha of 0.05 indicating that it is not a statistically significant predictor variable at this level. 
+
+```{r, warning=FALSE}
+data("respiratory", package = "HSAUR3")
+
+# create subset with month = 0 as the baseline
+resp <- subset(respiratory, month > "0")
+resp$baseline <- rep(subset(respiratory, month == "0")$status, rep(4, 111))
+# change response to zero or one
+resp$nstat <- as.numeric(resp$status == "good")
+resp$month <- resp$month[, drop = TRUE]
+# change levels for treatment
+names(resp)[names(resp) == "treatment"] <- "trt"
+levels(resp$trt)[2] <- "trt"
+
+# fit models using various corstr options
+resp_glm <- glm(status ~ centre + trt + gender + baseline 
+                + age, data = resp, family = "binomial")
+resp_gee_independent <- gee(nstat ~ centre + trt + gender + baseline + age,
+                         data = resp, 
+                      family = "binomial", id = subject, corstr = "independence",
+                      scale.fix = TRUE, scale.value = 1)
+resp_gee_exchange <- gee(nstat ~ centre + trt + gender + baseline + age,
+                         data = resp, 
+                      family = "binomial", id = subject, corstr = "exchangeable",
+                      scale.fix = TRUE, scale.value = 1)
+resp_gee_arm <- gee(nstat ~ centre + trt + gender + baseline + age,
+                         data = resp, 
+                      family = "binomial", id = subject, corstr = "AR-M", Mv = 1,
+                      scale.fix = TRUE, scale.value = 1)
+resp_gee_unstructured <- gee(nstat ~ centre + trt + gender + baseline + age,
+                         data = resp, 
+                      family = "binomial", id = subject, corstr = "unstructured",
+                      scale.fix = TRUE, scale.value = 1)
+
+# create dataframes for p-values of models
+arm_p <- as.data.frame(cbind(round(2*pnorm(abs(summary(resp_gee_arm)$coef[,3]),
+                                             lower.tail = FALSE), 3),
+                               round(2*pnorm(abs(summary(resp_gee_arm)$coef[,5]),
+                                             lower.tail = FALSE), 3)))
+unstructured_p <- as.data.frame(cbind(round(2*pnorm(abs(
+  summary(resp_gee_unstructured)$coef[,3]), lower.tail = FALSE), 3),
+                               round(2*pnorm(abs(
+                                 summary(resp_gee_unstructured)$coef[,5]), 
+                                 lower.tail = FALSE), 3)))
+# manipulate dfs
+colnames(arm_p) <- c("Naive P-Value", "Robust P-Value")
+colnames(unstructured_p) <- c("Naive P-Value", "Robust P-Value")
+setDT(arm_p, keep.rownames = TRUE)
+setDT(unstructured_p, keep.rownames = TRUE)
+
+# examine coefficients and p-values of each model
+kable(summary(resp_gee_arm)$coef,
+      caption = "Figure 1.1a: Auto Regressive Structure Coefficients & P-Values")
+kable(arm_p, caption = "Figure 1.1b: Auto Regressive Structure P-Values")
+kable(summary(resp_gee_unstructured)$coef, 
+      caption = "Figure 1.2a: Unstructured Coefficients")
+kable(unstructured_p, caption = "Figure 1.2b: Unstructured P-Values")
+
+# plot p-value comparison for each model
+axis_text <- c("Age", "Baseline", "Centre", "Gender", "Treatment")
+ggplot(subset(melt(arm_p), rn != "(Intercept)"), 
+       aes(x = rn, y = value, fill = variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.05, color = "black") +
+  annotate(geom = "text", label = "alpha = 0.05", x = 2.5, y = 0.05, vjust = -1) +
+  labs(title = "Autoregressive P-Values", subtitle = "Figure 1.3",
+       x = "Predictors", y = "P-Value") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  guides(fill = guide_legend(title = "Naive vs.\nRobust")) +
+  scale_x_discrete(labels = axis_text)
+ggplot(subset(melt(unstructured_p), rn != "(Intercept)"), 
+       aes(x = rn, y = value, fill = variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 0.05, color = "black") +
+  annotate(geom = "text", label = "alpha = 0.05", x = 2.5, y = 0.05, vjust = -1) +
+  labs(title = "Unstructured P-Values", subtitle = "Figure 1.4",
+       x = "Predictors", y = "P-Value") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  guides(fill = guide_legend(title = "Naive vs.\nRobust")) +
+  scale_x_discrete(labels = axis_text)
+```
+
+**Problem #1, Part B:** Which model is the best? Compare the following models:
+- independent
+- exchangable
+- AR-m
+- unstructured
+
+Justify your answer. Hint: Use QIC (in **MESS**), MSE, misclassification rate, comparison of naive vs. robust Z-score, or another method.
+
+**Results:** For this exercise, I compared the QIC, misclassification rate, naive vs. robust Z-score by variable by model and naive vs. robust Z-score total by model. 
+
+First, I fit geeglm models that match the gee models from the prior exercise for *independent*, *exchangeable*, *autoregressive* and *unstructured* correlation structured models. **Figure 1.5** shows the QIC scores of each model. The QIC score (Quasilikelihood under the Independence model Criterion) is similar to the AIC score we've used many times this semester. The QIC can be used to compare models with the lower score being the superior model. As we see, the the *unstructured* model is the best, according to QIC. The *independent* model has the worst QIC score among the 4 models. Because 3 of the scores are quite close, I decided to further compare the 4 models to find the best model.
+
+**Figure 1.6** compares the misclassification rate which, oddly enough, is identical among the 4 models. 
+
+**Figure 1.7** shows the difference between the naive and robust z-scores for each variable by model. After comparing these scores, we can see that the *Unstructured* and *Exchangeable* models again appear to be somewhat close using this metric.
+
+Lastly, I used **Figure 1.8** to plot the total difference between the naive and robust Z-scores by model. Here we can see that the *Unstructured* model has a slightly lower total than the *Exchangeable* model. Therefore, I've determined that the best *Generalized Estimation Equation* model is the one that uses *Unstructured* as it's correlation structure. 
+
+```{r}
+# fit geeglm models for QIC comparison
+resp_geeglm_independent <- geeglm(nstat ~ centre + trt + gender + baseline + age, 
+                                  data = resp, family = "binomial", id = subject,
+                                  corstr = "independence")
+resp_geeglm_exchange <- geeglm(nstat ~ centre + trt + gender + baseline + age, 
+                                   data = resp, family = "binomial", id = subject,
+                                   corstr = "exchangeable")
+resp_geeglm_AR1 <- geeglm(nstat ~ centre + trt + gender + baseline + age, data = resp,
+                       family = "binomial", id = subject, corstr = "ar1")
+resp_geeglm_unstructure <- geeglm(nstat ~ centre + trt + gender + baseline + age,
+                               data = resp, family = "binomial", id = subject,
+                               corstr = "unstructured")
+
+# compare QIC values
+IndependentModel_QIC <- QIC(resp_geeglm_independent)[1]
+ExchangeableModel_QIC <- QIC(resp_geeglm_exchange)[1]
+AutoregressiveModel_QIC <- QIC(resp_geeglm_AR1)[1]
+UnstructuredModel_QIC <- QIC(resp_geeglm_unstructure)[1]
+kable(rbind(IndependentModel_QIC, ExchangeableModel_QIC, 
+            AutoregressiveModel_QIC, UnstructuredModel_QIC),
+      caption = "Figure 1.5: QIC Comparison of Models")
+
+# compare misclassification rates
+independent_predict <- predict(resp_geeglm_independent, 
+                               newdata = resp, type = "response")
+independent_table <- table(resp$status, independent_predict >= 0.5)
+independent_error <- 1 - (sum(diag(independent_table)) / sum(independent_table))
+exchange_predict <- predict(resp_geeglm_exchange, newdata = resp, type = "response")
+exchange_table <- table(resp$status, exchange_predict >= 0.5)
+exchange_error <- 1 - (sum(diag(exchange_table)) / sum(exchange_table))
+ar1_predict <- predict(resp_geeglm_AR1, newdata = resp, type = "response")
+ar1_table <- table(resp$status, ar1_predict >= 0.5)
+ar1_error <- 1 - (sum(diag(ar1_table)) / sum(ar1_table))
+unstructured_predict <- predict(resp_geeglm_unstructure, newdata = resp,
+                                type = "response")
+unstructured_table <- table(resp$status, unstructured_predict >= 0.5)
+unstructured_error <- 1 - (sum(diag(unstructured_table)) / sum(unstructured_table))
+kable(cbind(independent_error, exchange_error, ar1_error, unstructured_error),
+      col.names = c("Independent Model", "Exchangeable Model", "Autoregressive Model",
+      "Unstructured Model"), caption = "Figure 1.6: Misclassification Rate by Model")
+
+# compare naive vs. robust Z-Score of gee models
+independent_nVSr <- 
+  abs(summary(resp_gee_independent)$coef[,3] - summary(resp_gee_independent)$coef[,5])
+exchange_nVSr <-
+  abs(summary(resp_gee_exchange)$coef[,3] - summary(resp_gee_exchange)$coef[,5])
+ar_nVSr <- 
+  abs(summary(resp_gee_arm)$coef[,3] - summary(resp_gee_arm)$coef[,5])
+unstructured_nVSr <- 
+  abs(summary(resp_gee_unstructured)$coef[,3] - summary(resp_gee_unstructured)$coef[,5])
+kable(cbind(independent_nVSr, exchange_nVSr, ar_nVSr, unstructured_nVSr),
+      col.names = c("Independent Model", "Exchangeable Model", "Autoregressive Model",
+                    "Unstructured Model"), 
+      caption = "Figure 1.7: Naive vs. Robust Z-Score Difference")
+
+# plot total naive vs. robust Z-Score
+independent_total <- sum(independent_nVSr)
+exchange_total <- sum(exchange_nVSr)
+ar_total <- sum(ar_nVSr)
+unstructured_total <- sum(unstructured_nVSr)
+nVSr_total <- cbind(independent_total, exchange_total, ar_total, unstructured_total)
+rownames(nVSr_total) <- "Total Naive vs. Robust Z-Score"
+ggplot(melt(nVSr_total), aes(x = Var2, y = value, fill = Var2)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Total Naive vs. Robust Z-Score by Model", subtitle = "Figure 1.8",
+       x = "Model", y = "Total Naive vs. Robust Z-Score") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 45, vjust = .75)) +
+  guides(fill = guide_legend(title = "Model")) +
+  scale_x_discrete(labels = c("Independent", "Exchangeable", 
+                              "Autoregressive", "Unstructured")) +
+  scale_fill_manual(labels = c("Independent", "Exchangeable", 
+                               "Autoregressive", "Unstructured"),
+                    values = rainbow(4)) +
+  scale_y_continuous(breaks = seq(0, 7, by = 1))
+```
+
+**Problem #2, Part A:** The data set **schizophrenia2** from **HSAUR3** package was collected in a follow-up study of women patients with schizophrenia (Davis, 2002). The binary response recorded at 0, 2, 6, 8, and 10 months after hospitalization was "thought disorder" (absent or present). The single covariate is the factor indicating whether a patient had suffered early or late onset of her condition (age of onset less than 20 years of age or age of onset 20 years or above). The question of interest is whether the course of the illness differs between patients with early and late onset schizophrenia.
+
+Investigate the question using plots and summary statistics.
+
+**Results:** **Figure 2.1** and **Figure 2.2** show the frequency of 'Thought Disorder' classification by month for Early Onset patients (less than 20 years old at diagnosis) and Late Onset patients (over 20 years old at diagnosis). I've added a category to these plots to show patients who dropped out of the study.
+
+The question of interest is whether the course of the illness was different depending on early or late onset of schizophrenia. These two plots, in my opinion, do not show a distinct difference. We see that as more time passes since hospitalization, the 'present' classification gets smaller and the 'absent' classification gets larger. One noticeable difference is that, with early onset patients, there were dropouts earlier in the study. With late onset patients, there weren't NA values until month 8.
+
+**Figure 2.3** shows the frequency of classification by onset status. Again, when looking at the entirety of the data, we don't see a markedly different pattern between early and late onset patients. **Figure 2.4** looks for a difference in patient behavior, based on onset, by examining proportions. Here we see a bigger gap in the proportion of present and dropout classifications among late onset patients than early onset patients.
+
+**Figure 2.5** summarizes these plots.
+
+*Comparable base R plots are shown.*
+
+```{r}
+data("schizophrenia2", package = "HSAUR3")
+schizophrenia2$month <- as.factor(schizophrenia2$month)
+
+# split data for visualization
+early_onset <- subset(schizophrenia2, onset == "< 20 yrs")
+early_onset$disorder <- factor(early_onset$disorder, exclude = NULL)
+levels(early_onset$disorder)[3] <- "dropout"
+late_onset <- subset(schizophrenia2, onset == "> 20 yrs")
+late_onset$disorder <- factor(late_onset$disorder, exclude = NULL)
+levels(late_onset$disorder)[3] <- "dropout"
+
+# create summary tables
+early_onset_sum <- early_onset %>%
+  group_by(disorder, month) %>%
+  summarize(count = n()) %>% 
+  mutate(disorder.count = sum(count), prop = count / sum(count)) %>% ungroup()
+early_onset_sum$onset <- "early"
+late_onset_sum <- late_onset %>%
+  group_by(disorder, month) %>%
+  summarize(count = n()) %>% 
+  mutate(disorder.count = sum(count), prop = count / sum(count)) %>% ungroup() 
+late_onset_sum$onset <- "late"
+
+# visualize disorder by onset and month
+ggplot(early_onset_sum, aes(x = disorder, y = count, fill = month)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Early Onset Disorder Count by Month",
+       subtitle = "Figure 2.1", x = "Disorder", y = "Frequency") +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = "Month"))
+ggplot(late_onset_sum, aes(x = disorder, y = count, fill = month)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Late Onset Disorder Count by Month",
+       subtitle = "Figure 2.2", x = "Disorder", y = "Frequency") +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = "Month"))
+
+# comparable base R plot
+barplot(table(subset(schizophrenia2, onset == "< 20 yrs")$disorder,
+             subset(schizophrenia2, onset == "< 20 yrs")$month),
+        main = "Early Onset Disorder Count by Month\nbase R",
+        xlab = "Months after Hospitalization",
+        col = c("darkblue", "red"),
+        legend = c("Absent", "Present"), args.legend = list(x="bottom"))
+barplot(table(subset(schizophrenia2, onset == "> 20 yrs")$disorder,
+             subset(schizophrenia2, onset == "> 20 yrs")$month),
+        main = "Late Onset Disorder Count by Month\nbase R",
+        xlab = "Months after Hospitalization",
+        col = c("green", "orange"),
+        legend = c("Absent", "Present"), args.legend = list(x="bottom"))
+
+# examining disorder by onset
+ggplot(data = rbind(early_onset_sum, late_onset_sum), aes(x = disorder, y = count, 
+                                                          fill = onset)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Thought Disorder Count by Onset", subtitle = "Figure 2.3",
+       x = "Thought Disorder", y = "Frequency") +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = "Onset"))
+ggplot(rbind(early_onset_sum, late_onset_sum), aes(x = disorder, y = prop, fill = onset)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Thought Disorder Proportion by Onset", subtitle = "Figure 2.4",
+       x = "Thought Disorder", y = "Proportion") +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5)) +
+  guides(fill = guide_legend(title = "Onset"))
+# comparable base R plots
+schiz_count <- table(schizophrenia2$disorder, schizophrenia2$onset)
+barplot(schiz_count, main = "Thought Disorder Count by Onset\nbase R",
+        xlab = "Onset", ylab = "Frequency", 
+        col = c("yellow", "lightblue"), legend = c("Absent", "Present"), 
+        beside = TRUE)
+schiz_prop <- prop.table(schiz_count)
+barplot(schiz_prop, main = "Thought Disorder Proportion by Onset\nbase R",
+        xlab = "Onset", ylab = "Proportion",
+        col = c("purple", "green"), legend = c("Absent", "Present"),
+        beside = TRUE)
+
+# print count / proportion info
+kable(cbind(early_onset_sum[,1:3], (early_onset_sum[,5]*100)),
+      col.names = c("Disorder", "Month of Eval", "Number of Observations",
+                    "% of Obs by Disorder"),
+      caption = "Figure 2.5: Frequency and Percentage of Obs by Disorder & Month")
+```
+
+
+**Problem #2, Part B:** Investigate the question using the GEE approach.
+
+**Results:** I used the GEE approach with correlation structures of 'independence', 'exchangeable', 'unstructured', and 'ar1'. I fit the models using the *geeglm* function. **Figure 2.6** shows the QIC scores by 'corstr'. Here we don't see a big different between models so all will be used going forward. 
+
+Because the question of interest is whether the disorder progression is affected by onset, we examine the p-values for onset as a predictor of the disorder from each model in **Figure 2.7**. We see that onset is not statistically significant in any of the models. 
+
+```{r}
+# add factor for disorder depending on present or absent removing obs with NA dependent values
+schiz <- schizophrenia2
+schiz$tdisorder <- as.numeric(schiz$disorder == "present")
+schiz <- schiz[!is.na(schiz$tdisorder),]
+
+# fit models to examine the question of whether onset determines course of illness (present / absent)
+schiz_gee_ind <- geeglm(tdisorder ~ onset, data = schiz, 
+                        family = "binomial", id = subject, corstr = "independence")
+schiz_gee_exch <- geeglm(tdisorder ~ onset, data = schiz, 
+                         family = "binomial", id = subject, corstr = "exchangeable")
+schiz_gee_unstr <- geeglm(tdisorder ~ onset, data = schiz, 
+                          family = "binomial", id = subject, corstr = "unstructured")
+schiz_gee_autor <- geeglm(tdisorder ~ onset, data = schiz, 
+                          family = "binomial", id = subject, corstr = "ar1")
+
+# compare QIC values
+kable(cbind(QIC(schiz_gee_ind)[1], QIC(schiz_gee_exch)[1], QIC(schiz_gee_unstr)[1],
+            QIC(schiz_gee_autor)[1]), col.names = c("Independent", "Exchangeable",
+                                                    "Unstructured", "Autoregressive"),
+      caption = "Figure 2.6: QIC Score for GEE by Correlation Structure")
+
+kable(cbind(summary(schiz_gee_ind)$coefficients[4], summary(schiz_gee_exch)$coefficients[4],
+            summary(schiz_gee_unstr)$coefficients[4], summary(schiz_gee_autor)$coefficients[4]),
+      col.names = c("Independent P-Vals", "Exchangeable P-Vals", "Unstructured P-Vals",
+                    "Autoregressive P-Vals"), 
+      caption = "Figure 2.7: Onset P-Values by Model")
+```
+
+**Problem #2, Part C:** Investigate the question using mixed effects model (lmer) from the previous chapter.
+
+**Results:** Here I used the *lmer* function to fit a linear mixed-effects model. **Figure 2.8** shows the coefficients within that model. Most notably, we see again that onset is not statistically significant as a predictor of the disorder classification.
+
+```{r}
+# fit lmer model per instructions
+schiz_lmer <- lmer(tdisorder ~ onset + (1|subject),
+                    data = schiz, family = "binomial") 
+# print coefficients
+paste("Figure 2.8: Model Coefficients in Linear Mixed-Effect Model")
+cftest(schiz_lmer)
+```
+
+**Problem #2, Part D:** Is there a difference? Which model(s) work(s) best? Describe your results.
+
+**Results:** Since, up to this point, I have not seen a difference in onset's effectiveness as a predictor of the disorder progression, we can take a look at the classification error rate from each of the above referenced models. 
+
+**Figure 2.9** summarizes these error rates. As we can see, among the GEE models, there is no difference in the error rate. The LMER model was slightly better at predicting the disorder classification, but it still has a very high error rate at over 30%. 
+
+Ultimately, it does not appear that onset is a good predictor for this dataset. 
+
+```{r}
+# check error rates
+ind_pred <- predict(schiz_gee_ind, newdata = schiz, type = "response")
+ind_tab <- table(schiz$tdisorder, ind_pred >= 0.5)
+ind_err <- 1 - (sum(diag(ind_tab)) / sum(ind_tab))
+
+exch_pred <- predict(schiz_gee_exch, newdata = schiz, type = "response")
+exch_tab <- table(schiz$tdisorder, exch_pred >= 0.5)
+exch_err <- 1 - (sum(diag(exch_tab)) / sum(exch_tab))
+
+unst_pred <- predict(schiz_gee_unstr, newdata = schiz, type = "response")
+unst_tab <- table(schiz$tdisorder, unst_pred >= 0.5)
+unst_err <- 1 - (sum(diag(unst_tab)) / sum(unst_tab))
+
+ar1_pred <- predict(schiz_gee_autor, newdata = schiz, type = "response")
+ar1_tab <- table(schiz$tdisorder, ar1_pred >= 0.5)
+ar1_err <- 1 - (sum(diag(ar1_tab)) / sum(ar1_tab))
+
+lmer_pred <- predict(schiz_lmer, newdata = schiz, type = "response")
+lmer_tab <- table(schiz$tdisorder, lmer_pred >= 0.5)
+lmer_err <- 1 - (sum(diag(lmer_tab)) / sum(lmer_tab))
+
+kable(cbind(ind_err, exch_err, unst_err, ar1_err, lmer_err), 
+      col.names = c("Independent Error", "Exchangeable Error", "Unstructured Error",
+                    "Autoregressive Error", "Linear Mixed-Effects Error"),
+      caption = "Figure 2.9: Misclassification Rate by Model")
+```
+
+
+
+
+
+

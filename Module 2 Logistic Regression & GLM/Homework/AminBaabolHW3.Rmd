@@ -1,0 +1,340 @@
+---
+title: "Homework 3"
+author: "Amin Baabol"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+## Instructions
+
+Answer all questions stated in each problem. Discuss how your results address each question.
+
+Submit your answers as a pdf, typeset (knitted) from an Rmd file. Include the Rmd file in your submission. You can typeset directly to PDF or typeset to Word then save to PDF In either case, both Rmd and PDF are required. If you are having trouble with .rmd, let us know and we will help you. If you knit to Word, check for any LaTeX commands that will not be compatible with Word.
+
+This file can be used as a template for your submission. Please follow the instructions found under "Content/Begin Here" titled \textbf{Homework Formatting}. No code should be included in your PDF submission unless explicitly requested. Use the `echo = F` flag to exclude code from the typeset document.
+
+For any question requiring a plot or graph, answer the question first using standard R graphics (See ?graphics). Then provide a equivalent answer using `library(ggplot2)` functions and syntax. You are not required to produce duplicate plots in answers to questions that do not explicitly require graphs, but it is encouraged. 
+
+You can remove the `Instructions` section from your submission.
+
+## Exercises
+
+1. (Ex. 7.3 pg 147 in HSAUR, modified for clarity) Use the \textbf{bladdercancer} data from the \textbf{HSAUR3} library to answer the following questions.
+
+a) Construct graphical and/or numerical summaries to identify a relationship between tumor size and the number of recurrent tumors. Discuss your discovery. (For example, a mosaic plot or contingency table is a good starting point. Otherwise,  there are other ways to explore this data.)
+
+```{r}
+#install.packages("ggmosaic")
+library(HSAUR3)
+library(ggplot2)
+library(ggmosaic)
+data("bladdercancer")
+
+#Rstudio mosaic plot
+mosaicplot(xtabs(~number+tumorsize,data = bladdercancer),main = "Number of Recurrent Tumors vs Tumorsize",
+           xlab="Number of Recurrent Tumors",ylab="Tumorsize",shade = TRUE)
+
+#ggplot mosaic plot
+ggplot(data = bladdercancer) + geom_mosaic(aes(x = product(tumorsize, number), fill = tumorsize), na.rm =FALSE) +
+            labs(x = "Number of Recurrent Tumors", y = "Tumour Size", title = 'Number of Recurrent Tumors vs Tumorsize')
+
+```
+Discussion:
+Based on the visual observtion of the two mosaicplots, the observed frequency for one or two tumors greater than 3cm is lower than expected whereas the oberseved frequency for 3 or 4 tumors less than or equal to 3cm is lower than expected.
+
+
+
+b) Assume a Poisson model describes the relationship found in part a). Build a Poisson regression that estimates the effect of tumor size on the number of recurrent tumors.  Does the result of this analysis support your discovery in part a)?
+
+```{r}
+#building the first model
+model1 <- glm(number~tumorsize,family = poisson,data = bladdercancer)
+summary(model1)
+
+```
+Discussion:
+According to the first poisson regression model, only the intercept is statistically signifcant at the 0.05 level. None of the explanatory variables have any meaningful significance despite the null deviance,residual deviance and the AIC are all being pretty low. At this point we can't draw a definite conclusion,So we'll compare the first model (model0) to a second model(model1) where we add an interaction between the explanatory variables, then we'll create a third model where the intercept is omitted because by suppressing the intercept all levels of the factor variable(tumorsize) are estimated, as opposed to using the standard constrast where the level "<=3cm" is set as the baseline in relation to the other coefficients. This will also allow us to examine if the significance of the coefficients change.
+
+```{r}
+#building the second model
+model2 <- glm(number~tumorsize+time,family = poisson,data = bladdercancer)
+#building the third model with no intercept
+model3 <- glm(number~tumorsize -1,family = poisson,data = bladdercancer)
+
+#summarizing and comparing the models
+summary(model1)
+summary(model2)
+summary(model3)
+anova(model1,model2,model3,test='Chisq')
+
+```
+Discussion:
+From the above analysis I accept the null hypothesis that there is nothing within the data to explain an increase in the number of tumors. Neither time nor the tumor size have any affect on increasing the number of tumors. This can be further proved through part one and interpreting the distribution of the data.
+
+2. Let $y$ denote the number of new AIDS cases in Belgium between the years 1981-1993. Let $t$ denote time.
+\begin{verbatim}
+y = c(12, 14, 33, 50, 67, 74, 123, 141, 165, 204, 253, 246, 240)
+t = c(1:13)
+\end{verbatim}
+
+a) Plot the progression of AIDS cases over time. Describe the general nature of the progress of the disease.
+
+```{r}
+y = c(12, 14, 33, 50, 67, 74, 123, 141, 165, 204, 253, 246, 240)
+t = c(1:13)
+plot(y ~ t,
+     main = "Progression of AIDS Cases Over Time",
+     xlab = "Time(years)",
+     ylab = "AIDS(cases)",
+     type="b",
+     col="navyblue",pch=16)
+
+```
+Discussion:
+On a quick-glance it seems like there is a linear-type characterization of the relationship between number of AIDS cases and time.However, we'll have to do further analysis to draw a conclusion.
+
+b) Fit a Poisson regression model $log(\mu_i)=\beta_0+\beta_1t_i$. How well do the model parameters describe disease progression? Use a residuals (deviance) vs Fitted plot to determine how well the model fits the data.
+
+```{r}
+library(ggplot2)
+# building the first model
+#creating a dataframe to house the variables
+pois.dat <- data.frame(Cases=y,Time=t)
+pois.model1 <- glm(Cases~Time,family = poisson,data = pois.dat)
+summary(pois.model1)
+
+#looking at how much the disease progresses
+exp(coef(pois.model1))
+exp(confint(pois.model1)) 
+
+#Rstudio plot for residual vs fitted
+plot(pois.model1, which = 1,col="navyblue",pch=13)
+
+#ggplot residual vs fitted
+ggplot(pois.model1, aes(x = .fitted, y = .resid))+geom_point()+geom_smooth(group = 1, formula = y ~ x)+labs(title = "Residuals vs Fitted")+labs(x = "Fitted",y="Residuals")
+
+
+```
+Discussion:
+The intercept and the time predictor variable are statistically significant at the 0.001 level with a confidence interval of 97.5% there is 21% increase int the AIDS cases, which means there is a strong relationship between the response and the explanatory variables. Having said that, taking a closer at the  the residual deviance  and the degree of freedom it is evident that this model needs further work to improve its accuracy. Poisson distribution assumes a ratio of 1, meaning the mean and the variance are equal. Therefore, we should be striving to have deviance/degree of freedom ratio closer to 1.
+
+In the context of this plot the residuals and the fitted values indicated an overdispersion because the points don't center around 0. There is also an apparant quadratic shape taking place, I'm not sure if this is a coincidence but there shouldn't be recognizable patterns except random errors. It's therefore, evident we need to introduce another term to potentially reduce the deviances and the AIC, thus improving the accuracy of the model.
+
+
+
+c) Now add a quadratic term in time (\textit{ i.e., $log(\mu_i)=\beta_0+\beta_1t_i +\beta_2t_i^2$} ) and fit the model. Do the parameters describe the progression of the disease? Does this improve the model fit? Compare the residual plot to part b). 
+
+```{r}
+#building the second model(quadratic)
+#new dataframe
+pois.dat2 <- data.frame(Cases=y,Time=t,time.sq =t^2)
+pois.model2 <- glm(Cases~Time+time.sq, family = "poisson",data=pois.dat2)
+summary(pois.model2)
+#exp(confint(pois.model2))
+exp(coef(pois.model2))
+#Rstudio Residuals vs Fitted plot
+plot(pois.model2, which = 1,col="navyblue",pch=13)
+
+#ggplot residuals vs fitted
+ggplot(pois.model2, aes(x = .fitted, y = .resid))+geom_point()+geom_smooth(group = 1, formula = y ~ x)+labs(title = "Residuals vs Fitted")+labs(x = "Fitted",y="Residuals")
+
+```
+Discussion:
+The introduction of the second explanatory variable(t^2) certainly improved the model. First, the p values are extremely low such that these variables are statistically significant at the 0.001 level.The model suggests that there's a 74% jump in the AIDS cases with a 97.5% confidence interval. The accuracy of this model is supported by the residual deviance dropping from 80 to 9 and degrees of freedom from 11 to 10 which gives us a ratio of 0.9, very close to 1. This is further supported by the new residuals vs fitted plot. The values randomly dispersed around 0 with no recognizable pattern, the fitted line seems to be indicated better prediction.Hence, this is an improvement to our original model.
+
+
+
+d) Compare the two models using AIC. Did the second model improve upon the first? Does this confirm your position from part c)? 
+
+```{r}
+#model1 AIC
+AIC(pois.model1)
+
+#model2 AIC
+AIC(pois.model2)
+```
+The first model has higher AIC where as the second model has significantly lower AIC, thus indicating that the sample prediction error and the  quality of the second model is much better than the first model. This does confirm my position from part C after comparing the residuals vs fitted plots of both models.
+
+
+e)  Compare the two models using a $\chi^2$ test (\texttt{anova} function will do this). Did the second model improve upon the first? Does this confirm your position from part c) and/or d)? 
+
+```{r}
+#chi-test
+anova(pois.model1, pois.model2, test = "Chisq")
+
+```
+Discussion:
+As the chi-square test indicates, the second model(quadratic) does improve on the first model based on residual deviance reduction and the extremly low p-value for the explanatory covariates which indicates that the second model is statistically significant at the 0.001 level and the more accurate model. Hence, we accept the alternative hypothesis and reject the null hypthosis.
+
+3. (Adapted from ISLR) Load the \textbf{Default} dataset from \textbf{ISLR} library. The dataset contains four features on 10,000 customers. We want to predict which customers will default on their credit card debt based on the observed features. You had developed a logistic regression model on HW \#2. Now consider the following two models 
+    \begin{itemize}
+    \item[Model 1:] Default = Student + balance 
+    \item[Model 2:] Default = Balance 
+    \end{itemize}
+Compare the models using the following four model selection criteria.
+
+a) AIC
+
+```{r,3a}
+library(ISLR)
+data(Default)
+#head(Default)
+
+#building logistic regression models
+Default$default<-as.numeric(Default$default=="Yes")
+#Default = student + balance
+logistic.model1 <- glm(default ~ student + balance, family=binomial(),data = Default)
+#Default = balance
+logistic.model2 <- glm(default ~ balance, family=binomial(),data = Default)
+
+#comparing the AIC
+AIC(logistic.model1)
+AIC(logistic.model2)
+
+anova(logistic.model1,logistic.model2, test = "Chisq")
+```
+Discussion:
+The AIC of the first model with the two explanatory covariate has lower AIC which suggests the first model is more accurate than the second model with the one predictor variable.Furthermore, this also suggest student may not be a good predicting covariate of who'll default on their credit card.
+
+b) Training / Validation set approach. Be aware that we have few people who defaulted in the data. 
+
+```{r}
+#splitting the dataset into training data and validation data
+#using a split ratio of 70/30
+set.seed(123)
+sample.size <- floor(0.7 * nrow(Default))
+split <- sample(seq_len(nrow(Default)), size = sample.size)
+train <- Default[split,]
+test <- Default[-split,]
+
+#training both models using the splitted subset data
+model1.train <- glm(default ~ student + balance,data=train,family=binomial())
+model2.train <- glm(default ~ balance,data=train,family=binomial())
+
+#comparing the error rates of the two models using the mean square error
+
+model1.error <- mean((predict(model1.train,test,type='response')-test$default)^2)
+model2.error <- mean((predict(model2.train,test,type='response')-test$default)^2)
+model1.error
+model2.error
+
+```
+Discussion:
+The two models seem to be having the almost the error rate, at this point it's not starkly clear which model has better accuracy although the first model does have the edge with a slightly lower error rate but not much different.
+
+
+c) LOOCV
+
+```{r}
+#my labtop isn't equipped to run this method, so i'll use a short method
+#library(boot)
+#cost <- function(r, pi = 0) mean(abs(r-pi) > 0.5)
+#cross.v1 <- cv.glm(Default,logistic.model1, cost)$delta
+#cross.v2 <- cv.glm(Default, logistic.model2, cost)$delta
+
+```
+
+```{r}
+set.seed(100)
+n <- 100
+loocv.matrix1 <- matrix(NA, nrow = n, ncol = 1)
+loocv.matrix2 <- matrix(NA, nrow = n, ncol = 1)
+#iteration for model1
+for (k in 1:n) {
+  train.loocv <- Default[-k, ]
+  test.loocv <- Default[k, ]
+  #fitting the model 
+  model.predict1 <- glm(default ~ balance + student,data=train.loocv,family='binomial')
+  #computing the mean square error
+  model.predict1.error <- mean((predict(model.predict1,test.loocv,type='response')-test.loocv$default)^2)
+  loocv.matrix1[k, ] <- model.predict1.error
+  }
+
+##iteration for model2
+loocv_tmp2 <- matrix(NA, nrow = n, ncol = 1)
+for (k in 1:n) {
+  train_loocv <- Default[-k, ]
+  test_loocv <- Default[k, ]
+  fit.model <- glm(default ~ balance,data=train_loocv,family='binomial')
+  error2 <- mean((predict(fit.model,test_loocv,type='response')-test_loocv$default)^2)
+  loocv_tmp2[k, ] <- error2
+}
+
+#calculation the mean of the cross validation
+mean(loocv.matrix1)
+mean(loocv_tmp2)
+
+```
+
+```{r}
+
+```
+
+
+
+d) 10-fold cross-validation.
+
+```{r}
+library(boot)
+set.seed(5)
+cv.glm(train, model1.train,K=10)$delta[1]
+cv.glm(train, model2.train,K=10)$delta[1]
+
+```
+Report validation misclassification (error) rate for both models in each of the four methods (we recommend using a table to organize your results). Select your preferred method, justify your choice, and describe the model you selected. 
+
+Discussion: 
+Splitted the data into 70/30 between the training and validation data sets gave us extremely close error rates.We performed further examination by subjecting both models to the train/validation set approach for which gave us:
+MSE1 = 0.02145588
+MSE2 = 0.02193536d 
+considering these two slightly different error rates, I'd recommend model 1 as the more accurate model.
+
+We continued on by trying out two other validation methods. The loocv adjusted prediction errors for model1 and model2 respectively were  0.0008405851, 0.001071851 which again indicates that our model selection in 3b was correct.
+
+Finally, we ended up using the 10-fold cross-validation approach setting K=10. The results were respectively 0.02138929,0.02175712.In conclusion, although the two models are similarly close in accuracy,however, model 1 with student as a covariate along with balance is the better model with lower predictions error as all the validation methods we performed indicated.
+
+
+
+
+
+
+4. Load the \textbf{Smarket} dataset in the \textbf{ISLR} library. This contains Daily Percentage Returns for the S\&P 500 stock index between 2001 and 2005. There are 1250 observations and 9 variables. The variable of interest is Direction. Direction is a factor with levels Down and Up, indicating whether the market had a negative or positive return on a given day.
+
+Develop two competing logistic regression models (on any subset of the 8 variables) to predict the direction of the stock market. Use data from years 2001 - 2004 as training data and validate the models on the year 2005. Use your preferred method from Question \#3 to select the best model. Justify your selection and summarize the model.
+
+```{r}
+library(ISLR)
+data(Smarket)
+#head(Smarket)
+Smarket$Direction <- as.numeric(Smarket$Direction == "Up")
+
+#spliting the dataset by year 2005
+train.data <- Smarket[Smarket$Year != 2005,]
+test.data<- Smarket[Smarket$Year == 2005,]
+
+#building two logistic regression models to compare
+log.model1 <- glm(Direction ~ Lag1 + Lag2, data = train.data,family = binomial())
+log.model2 <- glm(Direction ~ Lag1+Lag2+Lag3+Lag4+Lag5+Lag1*Lag2+Lag1*Lag3+Lag1*Lag4+Lag1*Lag5 ,data = train.data,family = binomial())
+
+#comapring the two models by means of anova
+summary(log.model1)
+summary(log.model2)
+anova(log.model1,log.model2,test.data='Chisq')
+
+
+#computing the mean square error for model selection
+error.rate.model1 <- mean((predict(log.model1,test.data,type='response')-test.data$Direction)^2)
+error.rate.model2 <- mean((predict(log.model2,test.data,type='response')-test.data$Direction)^2)
+error.rate.model1
+error.rate.model2
+
+```
+Discussion:
+I started out by building two models that had different number of explanatory covariates. The first model a simple model that had only three explanatory covariates consisting of Lag1,Lag2,Lag3 from the subsetted smarket dataset. The second model was more complex. It included all the Lag explanatory covariates and I threw additional interactions between the covariates. Unfornately, both models' summary isn't so promising as neither of them have any significant p-values. However, for the sake of model selection I moved on to cross validate both models and comapred their mean square errors. It turns out the simple model has an error rate of 0.24832, where as the complex model has an error rate of 0.224877. Also, the AIC for the simple model was 1387 and when I ran the compplex model the AIC jumped up to 1395 though the ratio of residuals to degrees of freedom did improved significantly from 1.99 for the simple model to 1.39 for the complex model. 
+
+Inconclusion, I'd recommend moving forward with the simple model based on its lower error rate and AIC.

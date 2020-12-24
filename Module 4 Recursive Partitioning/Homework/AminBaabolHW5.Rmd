@@ -1,0 +1,310 @@
+---
+title: "Homework 5"
+author: "Amin Baabol"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+Note: Note: I collaborated with Mohamed Ahmed in the completion of the R program 
+for part a of this recursive partitioning assignment. Our collaboration was 
+limited to the plotting part of part a, specifically he helped understand how 
+to do base R analogous ggplot of the decision tree and the observed vs. 
+predicted median value ggplot in part a and a discussion about our conceptual 
+comprehension of the various algorithms and models covered in chapter 9. 
+
+## Exercises
+
+1. (Ex. 9.1 pg 186 in HSAUR, modified for clarity) The **BostonHousing** dataset reported by Harrison and Rubinfeld (1978) is available as a `data.frame` structure in the **mlbench** package (Leisch and Dimitriadou, 2009). The goal here is to predict the median value of owner-occupied homes  (`medv` variable, in 1000s USD) based on other predictors in the dataset. 
+```{r}
+#list of libraries used
+#install.packages("mlbench")
+#install.
+library("mlbench")
+library("rpart")
+library("partykit")
+library("randomForest")
+library("rpart.plot")
+library("ggplot2")
+
+```
+
+
+
+
+a) Construct a regression tree using rpart(). 
+Discuss the results, including these key components:
+```{r}
+data("BostonHousing")
+#head(BostonHousing)
+
+#constructing regression tree using rpart()
+set.seed(seed = 3232)
+regress.tree.model <- rpart(medv ~., data=BostonHousing,
+                            control=rpart.control(minsplit = 15))
+
+
+#checking the number of nodes of the tree
+printcp(regress.tree.model)
+lowest.cp <- regress.tree.model$cptable[which.min(regress.tree.model$cptable[,"xerror"]), "CP"]
+
+#pruning to see if it makes a difference
+regress.tree.model.prune <- prune(regress.tree.model, lowest.cp)
+print(regress.tree.model)
+regress.tree.model.prune 
+
+
+#predicting median value using the covariates specified by the prune function
+regress.tree.predict <- predict(regress.tree.model.prune ,newdata=BostonHousing)
+
+
+#Calculating the MSE
+regress.tree.mse <- mean((BostonHousing$medv - regress.tree.predict)^2)
+regress.tree.mse
+
+#combining observed and predicted values into one dataframe plotting
+obs.pred.regress <- data.frame("Observed" = BostonHousing$medv,
+                               "Predicted" = regress.tree.predict)
+
+#plotting predicted median values vs observed median values
+
+#using base R
+plot(Predicted ~ Observed, data = obs.pred.regress,
+     main="Median Value Observed vs Predicted:Base R", 
+     xlab = "Observed",ylab = "Predicted",ylim=range(0,50),xlim=range(0,50),
+     col="darkgreen",type="p")
+abline(a = 0, b = 1,col="red")
+
+#using ggplot
+ggplot(data=obs.pred.regress,aes(x=Observed,y=Predicted))+
+    ggtitle("Observed Vs Predicted Median Value:ggplot")+
+    geom_point(color="navyblue",shape=1)+
+    geom_smooth(method="lm",se=FALSE,color="red")+
+    ylim(0,50)+xlim(0,50)+
+    theme_bw()
+
+#plotting final decision tree
+
+#using base R
+plot(as.party(regress.tree.model), tp_args = list(id = FALSE))
+
+#using rpart.plot
+rpart.plot(regress.tree.model, box.palette="BuGn", nn=TRUE)
+
+```
+##Discussion:
+
+- How many nodes does your tree have? 
+    It has 9 nodes with 8 splits
+    
+- Did you prune the tree? Did it decrease the number of nodes? 
+    yes, however, it didn't reduce the number of nodes
+        
+- What is the prediction error (MSE)? 
+    I have MSE of 13.31
+        
+- Plot the predicted vs. observed values. 
+    It appears that the variation between the predicted and actual increases 
+    as median value gets large
+        
+- Plot the final tree.
+    The final tree has 9 nodes with 8 splits against our initial condition 
+    of minimum of 15 splits,
+    though some nodes have observations number less than the specified minimum 
+    split which is concerning.
+    
+b) Apply bagging with 50 trees. Report the prediction error (MSE) and plot 
+the predicted vs observed values.
+```{r}
+#constructing a new model using bagging with 50 trees
+trees <- vector(mode = "list", length = 50)
+n <- nrow(BostonHousing)
+bootsamples <- rmultinom(length(trees), n, rep(1, n)/n)
+
+#new model using bagging method
+bagging.model <- rpart(medv ~ ., data = BostonHousing,
+                       control = rpart.control(xval = 0))
+for (i in 1:length(trees))
+trees[[i]] <- update(bagging.model, weights = bootsamples[,i])
+
+#predicting new median values using the new model
+bagging.model.predict <- predict(bagging.model , newdata = BostonHousing)
+
+#computing MSE
+bagging.mse <- mean((BostonHousing$medv - bagging.model.predict)^2)
+bagging.mse
+
+#combining  observed and  predicted values into one dataframe plotting
+obs.pred.bagging <- data.frame("Observed" = BostonHousing$medv,
+                               "Predicted" = bagging.model.predict)
+
+#plotting predicted median values vs observed median values
+
+#using base R
+plot(Predicted ~ Observed, data = obs.pred.bagging,
+     main="Observed Vs Predicted Median Value:Base R", 
+     xlab = "Observed",ylab = "Predicted",ylim=range(0,50),xlim=range(0,50),
+     col="darkgreen",type="p")
+abline(a = 0, b = 1,col="red")
+
+
+#using ggplot
+ggplot(data=obs.pred.bagging,aes(x=Observed,y=Predicted))+
+    ggtitle("Observed Vs Predicted Median Value:ggplot")+
+    geom_point(color="navyblue",shape=1)+
+    geom_smooth(method="lm",se=FALSE,color="red")+
+    ylim(0,50)+xlim(0,50)+
+    theme_bw()
+
+```
+##Discussion:
+
+I thought the bagging the decision tree would lead to a smaller mean square
+error because bagging is supposed to minimize the high variability,however, 
+that isn't the case.We got a mean square error of 16.2 with the bagging method,
+perhaps bagging doesn't always improve a model.
+
+
+c) Apply bagging using the randomForest() function. Report the prediction error 
+(MSE). Was it the same as (b)? If they are different what do you think caused
+it?  Plot the predicted vs. observed values.
+```{r}
+set.seed(626364)
+library("randomForest")
+data("BostonHousing")
+#head(BostonHousing)
+#constructing a random forest model using 50 trees
+bagging.randomforrest.model <- randomForest(medv ~ ., data=BostonHousing,
+                                    ntree=50,
+                                    mtry=13)
+
+#predicting new median values using the random forest model with bagging
+bagging.rf.model.predict <- predict(bagging.randomforrest.model,
+                                    data=BostonHousing)
+
+#computing MSE
+bagging.rf.mse <- mean((BostonHousing$medv - bagging.rf.model.predict)^2)
+bagging.rf.mse
+
+#combining observed and predicted values into one dataframe plotting
+obs.pred.rf.bagging <- data.frame("Observed" = BostonHousing$medv,
+                                  "Predicted" = bagging.rf.model.predict)
+
+
+
+#plotting predicted median values vs observed median values
+
+#using base R
+plot(Predicted ~ Observed, data = obs.pred.rf.bagging,
+     main="Observed Vs Predicted Median Value:Base R", 
+     xlab = "Observed",ylab = "Predicted",ylim=range(0,50),xlim=range(0,50),
+     col="darkgreen",type="p")
+abline(a = 0, b = 1,col="red")
+
+#using ggplot
+ggplot(data=obs.pred.rf.bagging,aes(x=Observed,y=Predicted))+
+    ggtitle("Observed Vs Predicted Median Value:ggplot")+
+    geom_point(color="navyblue",shape=1)+
+    geom_smooth(method="lm",se=FALSE,color="red")+
+    ylim(0,50)+xlim(0,50)+
+    theme_bw()
+```
+##Discussion:
+During the random forest model construction I used 50 trees like I have in 
+part b of the bagging method. Further more, I included all of the 13 candidate 
+covariates instead of using the default method.Surprisingly, the mean square 
+error is 10.34 which is smaller than both the rpart() regression tree in part a 
+and the bagging in part b. The plot looks a lot more linear which makes sense 
+for why our mse was low because random forest with bagging reduces 
+the variability in the data by randomly selecting covariates to split. 
+
+
+    
+d) Use the randomForest() function to perform random forest. 
+Report the prediction error (MSE).  Plot the predicted vs. observed values.
+```{r}
+#constructing a new model using just random forest method
+set.seed(234453)
+random.forrest.model <- randomForest(medv ~ ., data=BostonHousing,
+                                     mtry=sqrt(13))
+
+#predicting new median values using the random forest model
+random.forrest.model.predict <- predict(random.forrest.model,
+                                        data=BostonHousing)
+
+#computing MSE
+RF.model.mse <- mean((BostonHousing$medv - random.forrest.model.predict)^2)
+RF.model.mse
+
+#combining the observed and predicted values into one dataframe plotting
+obs.pred.rf <- data.frame("Observed" = BostonHousing$medv,
+                          "Predicted" = bagging.rf.model.predict)
+
+#plotting predicted median values vs observed median values
+
+#using base R
+plot(random.forrest.model.predict ~ medv, data = BostonHousing,
+     main="Observed Vs Predicted Median Value:Base R", 
+     xlab = "Observed",ylab = "Predicted",ylim=range(0,50),
+     xlim=range(0,50),col="darkgreen",type="p")
+abline(a = 0, b = 1,col="red")
+
+#using ggplot
+ggplot(data=obs.pred.rf.bagging,aes(x=Observed,y=Predicted))+
+    ggtitle("Observed Vs Predicted Median Value:ggplot")+
+    geom_point(color="navyblue",shape=1)+
+    geom_smooth(method="lm",se=FALSE,color="red")+
+    ylim(0,50)+xlim(0,50)+
+    theme_bw()
+```
+##Discussion:
+
+I constructed this random forest model using the default mtry method which is 
+the square root of the total number of the covariates. The plot looks more 
+linear than the random forest with bagging method in part c. This indicates 
+that random forest without bagging reduced the variability in the data 
+even more which is why our mean square error (mse) is even lower. 
+The mse of the random forest without bagging is 9.75 whereas the random forest 
+with bagging model in part c had an mse of 10.34. Moving forward, 
+I would suggest using random forest as it adds randomness in the training of the 
+data especially during the explanatory variables selection.
+    
+e) Include a table of each method and associated MSE. Which method is more accurate?
+```{r}
+#constructing a table 
+Method <- c("Regression Tree", "Bagging", "Bagging Random Forest",
+            "Random Forest") 
+MSE <- c(regress.tree.mse,bagging.mse,bagging.rf.mse,RF.model.mse)
+Table <- data.frame(Method,MSE)
+Table
+```
+
+
+##Discussion:
+
+From the table it's evident that random forest is the best alternative for 
+predicting the median value of owner-occupied homes. It has an error rate of 
+about 9.75% which is the lowest among the 4 machine learning models we built 
+and tested. Having said that, bagging with random forest shouldn't be discounted 
+all together by simply comparing the mean square errors which isn't that much 
+worse than random forest. I believe different methods are more appropriate for 
+different applications. However, in this particular Boston housing dataset, 
+random forest gives the most reliable prediction with the lowest error.
+
+
+
+
+##Works Cited
+1.Michael, Semhar, and Christopher P. Saunders. “Recursive Partitioning.” Chapter 8. 10 Oct. 2020, South Dakota State University, South Dakota State University. 
+2.Therneau, Terry, and Elizabeth Atkinson."An Introduction to Recursive Partitioning Using the RPART Routines". 2015.
+3.Boehmke, Bradley, and Brandon Greenwell. Chapter 10 Bagging | Hands-On Machine Learning with R. Bradleyboehmke.Github.Io, 1 Feb. 2020,
+  bradleyboehmke.github.io/HOML/bagging.html. Accessed 14 Oct. 2020.
+4.Steorts, Rebecca C. “Tree Based Methods: Bagging, Boosting, and Regression Trees.” STA 325, Chapter 8 ISL. 9 Oct. 2020, Duke University, Duke University. 
+5.Jackson, Simon. “Visualising Residuals • BlogR.” BlogR on Svbtle, drsimonj.svbtle.com/visualising-residuals.
+6.Everitt, Brian, and Torsten Hothorn. A Handbook of Statistical Analyses Using n SECOND EDITION. Taylor and Francis Group LLC, 2010.
+
+    

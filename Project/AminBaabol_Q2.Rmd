@@ -1,0 +1,251 @@
+---
+title: "Question 2"
+author: "Amin Baabol"
+date: "11/28/2020"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+
+```
+
+##Introduction
+
+We are provided with an excel file containing 820 samples. In this files there are log-likelihood ratios stored in four variables (LLRX,LLRY,LLRZ,Omnibus). Our goal 
+for this analysis is aimed at establishing whether or not a relationship between 
+variable "Omnibus" and the remaining three variables exists.
+
+
+## Approach
+
+In order for our analysis to fully capture the possibility of a relationship 
+existing between the variables, we will conduct an unpaired t-test to confirm
+that difference in the means exists. In doing so, the original data will be split
+by type and compare the two types' means. We will then visualize the distributions
+of data.Moreover,performing an F-test in one way nalysis of variance will should 
+confirm our unpaired t-test results.The Equation needed to compute this F-test is:
+$F = Variance-Between-Variables/Variance-Within-Variables$
+We will not be comparing numerous models, we are simply constructing a few linear
+models and a general additive model to characterizes the influence of LLRX,LLRY,
+LLRZ on OmnibusLLR.
+
+
+
+
+```{r }
+library(ggplot2)
+library(car)
+library(tidyverse)
+library(caret)
+library(DataExplorer)
+library(hrbrthemes)
+library(gridExtra)
+library(dplyr)
+library(tidyr)
+library(viridis)
+library("PerformanceAnalytics")
+library(readr)
+LLR.Data <- read_csv("/Users/aminbaabol/Desktop/GradSchool/STATS-601\ Statistical\ Programming/Project/LLR.csv")
+
+```
+
+
+##Mean Difference
+
+Performing Welch two Sample t-test we find that the p-value is significant enough
+to reject the null hypothesis that the two means not are different,which suggests that 
+the presence of the LLRX,LLRY,LLRZ have influence in the mean difference of OmnibusLLR 
+in the two groups.we will simply compare the Omnibus density plots for the two groups,
+"bw" and "wi".The density and histogram plots also indicate the unequal distribution 
+of Omnibus for the two types.
+
+```{r}
+wi <- subset(LLR.Data,LLR.Data$Type == "wi")
+bw <- subset(LLR.Data,LLR.Data$Type == "bw")
+t.test(wi$OmnibusLR,bw$OmnibusLR)
+
+density <-ggplot(data=LLR.Data, aes(x=OmnibusLR, group=Type, fill=Type)) +
+    geom_density(adjust=1.5, alpha=.4) +
+    theme_ipsum()
+
+histogram <- ggplot(data=LLR.Data, aes(x=OmnibusLR, group=Type, fill=Type)) +
+  geom_histogram(adjust=1.5, alpha=.4) +
+  theme_ipsum()
+grid.arrange(density,histogram)
+
+
+```
+
+
+##Correlation plot and  Scatterplots
+
+
+The correlation plot indicates that variable "OmnibusLLR" is correlated with
+LLRX at a rate of 78%, while the same variable is correlated with LLRY and LLRZ
+at a rate of 61% and 66% respectively. LLRX,LLRY and LLRZ have low correlations
+among themselves which means the risk of multicollinearity is not eminent.Furthermore,
+the scatter plots indicate intricate relationships between Omnibus LLR and the 
+other log-likelihood ratio variables.This complex pattern can not simply be explained 
+by a linear regression model.
+
+
+```{r}
+#OmnibusLR vs LRX
+par(mfrow = c(2,2))
+plot(OmnibusLR ~ LRX, data = LLR.Data, col = "dodgerblue", pch = 20, cex = 1.5,
+main = "OmnibusLR vs LRX")
+#OmnibusLR vs LRX
+plot(OmnibusLR ~ LRY, data = LLR.Data, col = "darkgreen", pch = 20, cex = 1.5,
+main = "OmnibusLR vs LRY")
+#OmnibusLR vs LRX
+plot(OmnibusLR ~ LRZ, data = LLR.Data, col = "darkred", pch = 20, cex = 1.5,
+main = "OmnibusLR vs LRZ")
+
+
+#Visualization of correlations
+library("PerformanceAnalytics")
+chart.Correlation(LLR.Data[,c(3,5,6,7)],
+                  labels = TRUE,
+                  main = "Figure 4",
+                  histogram = TRUE, pch =19)
+```
+
+
+
+```{r}
+#Splitting Data
+set.seed(4518)
+split.data <- LLR.Data$OmnibusLR %>%
+  createDataPartition(p = 0.7, list = FALSE)
+train.data  <- LLR.Data[split.data, ]
+test.data <- LLR.Data[-split.data, ]
+
+```
+
+
+## Linear Model Assumptions
+
+Linear models make quite a few assumptions but the most important ones include,
+a linear relationship exists between the response variable "OmnibusLLR" and the 
+covariates.The residuals are normally distributed at around zero within reasonable standard deviation.It also assumes that the variance in the residuals is constant.
+
+
+
+
+## Linear regression Model 
+
+
+A total of six linear models were constructed.A one way analysis of variance was conducted, comparing both their F-statistics and Residuals. A likelihood ratio 
+test using *anova()* was also performed. It turns out the model with all three 
+predictors, LLRX,LLRY, and LLRZ performed best. All predictors were significant 
+at the 0.05 level. However,the residuals failed to hold up the normal distribution assumption. Which means linear models cannot satisfactorily explain this relationship.
+
+
+```{r}
+#Polynomial  model
+
+Model.Null <- lm(OmnibusLR ~ 1,data = train.data)
+Model1 <- lm(OmnibusLR ~ LRX ,data = train.data)
+Model2 <- lm(OmnibusLR ~ LRY,data = train.data)
+Model3 <- lm(OmnibusLR ~ LRZ,data = train.data)
+Model4 <- lm(OmnibusLR ~ LRX + LRY + LRZ,data = train.data)
+Model5 <- lm(OmnibusLR ~ LRX + I(LRY^2) + I(LRZ^3),data = train.data)
+
+anova(Model.Null,Model1,Model2,Model3,Model4,Model5, test = 'LR')
+summary(Model4)
+
+par(mfrow = c(2,2))
+plot(Model4, which = 1:4)
+```
+
+
+
+##Generalized Additive Models
+
+We are approaching this model as a non-parametric model, which means we are not
+making too many assumptions.We will estimate the appropriate functional form of 
+the relationship from the data.
+
+
+```{r}
+set.seed(1241244)
+library(mgcv)
+# Build the model
+GAM.Model <- gam(OmnibusLR ~ s(LRX) + s(LRY) + s(LRZ),data = train.data)
+
+#GAM Model summary
+summary(GAM.Model)
+GAM.Model$coefficients
+GAM.Model$deviance
+AIC(GAM.Model)
+
+llx <- ggplot(train.data, aes(LRX, OmnibusLR) ) +
+  geom_point() +
+  stat_smooth(method = gam, formula = y ~ s(x))
+lly <- ggplot(train.data, aes(LRY, OmnibusLR) ) +
+  geom_point() +
+  stat_smooth(method = gam, formula = y ~ s(x))
+llz <- ggplot(train.data, aes(LRZ, OmnibusLR) ) +
+  geom_point() +
+  stat_smooth(method = gam, formula = y ~ s(x))
+
+
+grid.arrange(llx,lly)
+grid.arrange(lly,llz)
+#GAM Model diagnostics
+par(mfrow = c(2,2))
+gam.check(GAM.Model)
+
+
+# Make predictions
+GAM.Predict <- GAM.Model %>% predict(test.data)
+
+# Model performance
+GAM.Model.Check <- data.frame(
+  RMSE = RMSE(GAM.Predict, test.data$OmnibusLR),
+  R2 = R2(GAM.Predict, test.data$OmnibusLR))
+GAM.Model.Check
+```
+
+
+## Conclusion
+
+The general additive model has shown to be capable of characterizing the 
+relationship between the OmbibusLLR and the three covariates LLRX,LLRY and LLRZ.
+This complex non-parametric relationship cannot be adequately explained by a simple
+linear regression. The linear regressions that was constructed failed to hold up
+a few of the assumptions. The residuals in particular were not normally distributed
+in the qq-normal plot. The linear regression's predictions only seemed to be 
+accurately predicting perhaps the first few iterations at which point it loses
+reliability.On the other hand, the general additive model's prediction seems to 
+capture well the pattern in the observed data.This means given the low MSE,AIC and Deviance the gam model shows in the summary,its predictive ability is superior to 
+that of the linear regression. However,the main reason this gam model was constructed 
+is to examine the effect or the influence the covariates have on the response variable
+"OmnibusLLR". According to the summary statistics of the gam model, LLRX,LLRY, and
+LLRZ have no significance as parametric terms. It is only when they're smoothed
+that they become very significant with p-values of less than 2^-16. This indicates
+LLRX,LLRY,and LLRZ have significant non-linear influence or effect on the response variable OmnibusLLR.Moving forward, I would recommend performing a polynomial
+regression with varying degrees to characterize the 
+
+
+
+
+##Works Cited
+
+Michael, Semhar, and Christopher P. Saunders. “Scatterplot Smoothers and GAM” Chapter 10. 05 DEc. 2020, South Dakota State University, South Dakota State University. 
+
+Everitt, Brian, and Torsten Hothorn. A Handbook of Statistical Analyses Using n SECOND EDITION. Taylor and Francis Group LLC, 2010.
+
+ackson, Simon. “Visualising Residuals • BlogR.” BlogR on Svbtle, drsimonj.svbtle.com/visualising-residuals.
+
+Lowhorn, J. (n.d.). Retrieved DEcember 05, 2020, from https://rstudio-pubs-static.s3.amazonaws.com/326465_9748350bbfca41afb753211eff074761.html
+
+Neupane, Achal. “STAT_601_Final.” Achal Neupane, 04 Dec. 2019, achalneupane.github.io/achalneupane.github.io/post/stat_601_final/. 
+
+Priyadarshana, Pandula. “Sign In.” RPubs, rpubs.com/PandulaP/logisticregression_model_compare. 
+
+Kassambara, kassambara, et al. “Linear Regression Assumptions and Diagnostics in R: Essentials.” STHDA, 11 Mar. 2018, www.sthda.com/english/articles/39-regression-model-diagnostics/161-linear-regression-assumptions-and-diagnostics-in-r-essentials/. 
+
